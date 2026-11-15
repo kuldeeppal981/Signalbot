@@ -11,7 +11,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:15px/1.
 #app{display:flex;flex-direction:column;height:100%}
 main{flex:1;overflow-y:auto;padding:14px 16px 20px}
 nav{display:flex;border-top:1px solid var(--line);background:var(--surf)}
-nav button{flex:1;padding:13px 0;background:none;border:0;color:var(--mut);font:600 11px system-ui;letter-spacing:.2px}
+nav button{flex:1;padding:13px 0;background:none;border:0;color:var(--mut);font:600 10px system-ui;letter-spacing:0}
 nav button.on{color:var(--acc);box-shadow:inset 0 2px 0 var(--acc)}
 h1{font-size:18px;margin:0 0 12px}
 .card{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
@@ -38,6 +38,11 @@ input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--li
 .j{display:flex;justify-content:space-between;gap:10px;align-items:center}
 .pos{color:var(--up)}.neg{color:var(--dn)}
 .hide{display:none}
+.chip{display:inline-block;padding:5px 10px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:99px;color:var(--mut);font-size:12px;background:none}
+.chip.on{background:#3b1c1f;color:var(--dn);border-color:var(--dn)}
+.chip.good.on{background:#12392b;color:var(--up);border-color:var(--up)}
+details summary{cursor:pointer;font-weight:700}
+#chcv{width:100%;height:320px;display:block;touch-action:pan-y}
 </style>
 </head>
 <body>
@@ -59,6 +64,17 @@ input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--li
       <p class="note">Sirf expiry din, 1:00-2:45 PM. Sasta far-OTM option, jo aksar zero hota hai. Din mein max 1.</p>
       <button class="btn ghost" id="zh">Zero-Hero check karo</button>
       <div id="zhout"></div></div>
+  </section>
+  <section id="t-ch" class="hide">
+    <h1>Live chart</h1>
+    <div class="seg" id="chseg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button></div>
+    <p class="note" id="chst" style="margin-top:10px"></p>
+    <div class="card" style="padding:8px 6px 6px"><canvas id="chcv"></canvas>
+      <p class="note" style="margin:6px 8px 2px" id="chinfo">Candle par tap karo: OHLC dikhega.</p>
+      <p class="note" style="margin:2px 8px 4px"><span style="color:#58A6FF">&#9632;</span> EMA9 &nbsp;<span style="color:#F2B84B">&#9632;</span> EMA20 &nbsp;<span style="color:#6e7681">- - -</span> Opening range &nbsp;<span style="color:#3DDC97">&#9650;</span> CE signal &nbsp;<span style="color:#FF6B6B">&#9660;</span> PE signal &nbsp;<span style="color:#58A6FF">&#9679;</span> paper fill</p></div>
+    <button class="btn ghost" id="chref" style="margin-top:0">Abhi refresh karo</button>
+    <p class="note" id="chscan"></p>
+    <div id="chsigs"></div>
   </section>
   <section id="t-pp" class="hide"></section>
   <section id="t-bt" class="hide">
@@ -116,20 +132,22 @@ input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--li
     </div>
   </section>
 </main>
-<nav><button class="on" data-t="sig">SIGNAL</button><button data-t="pp">PAPER</button><button data-t="bt">BACKTEST</button><button data-t="jr">JOURNAL</button><button data-t="st">SETTINGS</button></nav>
+<nav><button class="on" data-t="sig">SIGNAL</button><button data-t="ch">CHART</button><button data-t="pp">PAPER</button><button data-t="bt">BACKTEST</button><button data-t="jr">JOURNAL</button><button data-t="st">SETTINGS</button></nav>
 </div>
 <script src="engine.js"></script>
+<script src="guard.js"></script>
+<script src="chart.js"></script>
 <script src="totp.js"></script>
 <script src="analytics.js"></script>
 <script src="paper.js"></script>
 <script src="backtest.js"></script>
 <script>
-const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest;
+const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest, LC = window.LiveChart;
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false }, ld('sb_cfg', {}));
-let sym = 'NIFTY', last = null;
+let sym = 'NIFTY', last = null, curTab = 'sig';
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
 const today = () => E.istDate(Date.now());
@@ -137,9 +155,11 @@ const today = () => E.istDate(Date.now());
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
-  ['sig', 'pp', 'bt', 'jr', 'st'].forEach((t) => $('t-' + t).classList.toggle('hide', t !== b.dataset.t));
+  ['sig', 'ch', 'pp', 'bt', 'jr', 'st'].forEach((t) => $('t-' + t).classList.toggle('hide', t !== b.dataset.t));
+  curTab = b.dataset.t;
   if (b.dataset.t === 'jr') renderJournal();
   if (b.dataset.t === 'pp') renderPaper();
+  if (b.dataset.t === 'ch') chartStart(); else chartStop();
 });
 document.querySelectorAll('#seg button').forEach((b) => b.onclick = () => {
   sym = b.dataset.s;
@@ -157,7 +177,8 @@ window.__nativeCb = (id, status, b64) => {
   if (status === 401) return p.rej(new Error('Token galat ya expire ho gaya. Settings mein naya token daalo.'));
   if (status < 200 || status > 299) {
     const m = j && j.errors && j.errors[0] && j.errors[0].message;
-    return p.rej(new Error('Upstox error ' + status + (m ? ': ' + m : '')));
+    const er = new Error('Upstox error ' + status + (m ? ': ' + m : '')); er.status = status;
+    return p.rej(er);
   }
   p.res(j);
 };
@@ -168,8 +189,10 @@ const nfetch = (method, url, headers, body) => new Promise((res, rej) => {
   window.Native.fetch(id, method, url, JSON.stringify(headers || {}), body || '');
   setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('Timeout. Net check karo.')); } }, 30000);
 });
-const api = (path) => nfetch('GET', 'https://api.upstox.com' + path,
-  { Accept: 'application/json', Authorization: 'Bearer ' + cfg.token });
+// Every Upstox call goes through the guard: shared cache, spacing, budget, 429 backoff.
+const guard = window.Guard.create({ send: (path) => nfetch('GET', 'https://api.upstox.com' + path,
+  { Accept: 'application/json', Authorization: 'Bearer ' + cfg.token }) });
+const api = (path, opt) => guard.get(path, opt);
 
 /* ---------- Angel One (spot cross-check only) ---------- */
 const ANGEL = 'https://apiconnect.angelone.in';
@@ -198,13 +221,17 @@ async function angelSpot(s) {
 }
 
 const KEYS = { NIFTY: 'NSE_INDEX|Nifty 50', BANKNIFTY: 'NSE_INDEX|Nifty Bank', VIX: 'NSE_INDEX|India VIX' };
+// Same paths + TTLs are used by scan and chart, so one network call serves both.
+const qPath = (s) => '/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(KEYS[s] + ',' + KEYS.VIX);
+const cPath = (s) => '/v2/historical-candle/intraday/' + encodeURIComponent(KEYS[s]) + '/1minute';
+const TTL = { quote: 15000, candle: 20000, contract: 3600000, chain: 30000, optQuote: 10000 };
 
 async function loadLive(s) {
   const key = KEYS[s], ek = encodeURIComponent(key);
   const [q, cd, ct] = await Promise.all([
-    api('/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(key + ',' + KEYS.VIX)),
-    api('/v2/historical-candle/intraday/' + ek + '/1minute'),
-    api('/v2/option/contract?instrument_key=' + ek),
+    api(qPath(s), { ttl: TTL.quote }),
+    api(cPath(s), { ttl: TTL.candle }),
+    api('/v2/option/contract?instrument_key=' + ek, { ttl: TTL.contract }),
   ]);
   const quotes = Object.entries(q.data || {});
   const find = (name) => { const e = quotes.find(([k]) => k.toLowerCase().includes(name)); return e ? e[1].last_price : null; };
@@ -215,7 +242,7 @@ async function loadLive(s) {
   const exps = [...new Set(contracts.map((c) => c.expiry))].filter((d) => d >= td).sort();
   if (!exps.length) throw new Error('Expiry nahi mili.');
   const lotSize = (contracts.find((c) => c.expiry === exps[0]) || {}).lot_size;
-  const ch = await api('/v2/option/chain?instrument_key=' + ek + '&expiry_date=' + exps[0]);
+  const ch = await api('/v2/option/chain?instrument_key=' + ek + '&expiry_date=' + exps[0], { ttl: TTL.chain });
   const chain = (ch.data || []).map((r) => ({
     strike: r.strike_price,
     ceKey: r.call_options && r.call_options.instrument_key, ceLtp: r.call_options && r.call_options.market_data.ltp,
@@ -249,6 +276,51 @@ function demoData(s) {
   }
   return { symbol: s, spot: p, vix: 14.2, chain, lotSize: s === 'NIFTY' ? 65 : 30, expiry: 'demo',
     candles: E.parseCandles(rows.reverse()), nowMs: base + n * 60000, demo: true };
+}
+
+/* ---------- helpers: decision log, signal log, capital check ---------- */
+const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const hmOf = (t) => E.hhmm(E.istMin(t));
+const dlKey = () => 'sb_dlog_' + today();
+const sigKey = () => 'sb_sigs_' + today();
+function dlog(s, r) {
+  const a = ld(dlKey(), []), now = Date.now();
+  const reason = r.noTrade ? r.reason : 'SIGNAL ' + r.signal.option + ' ' + r.signal.strike;
+  const same = a.find((x) => x.sym === s && x.reason === reason);
+  if (same) { same.n++; same.last = now; } else a.unshift({ sym: s, reason, sig: !r.noTrade, first: now, last: now, n: 1 });
+  sv(dlKey(), a.slice(0, 250));
+}
+function logSignal(sg, s, spot) {
+  const a = ld(sigKey(), []), now = Date.now();
+  if (a.some((x) => x.sym === s && x.option === sg.option && x.strike === sg.strike && now - x.tMs < 30 * 60000)) return;
+  a.push({ sym: s, tMs: now, option: sg.option, dir: sg.option === 'CE' ? 1 : -1, strike: sg.strike, entryLo: sg.entryLo, entryHi: sg.entryHi, sl: sg.sl, t1: sg.t1, t2: sg.t2, spot, inv: sg.indexInvalidation, lots: sg.lots });
+  sv(sigKey(), a.slice(-20));
+}
+(function cleanOld() {
+  try {
+    const cut = E.istDate(Date.now() - 14 * 86400000);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i), m = /^sb_(dlog|sigs|cnt|notified|err|zh|zhn)_(\d{4}-\d{2}-\d{2})$/.exec(k || '');
+      if (m && m[2] < cut) localStorage.removeItem(k);
+    }
+  } catch (e) {}
+})();
+function capCheck(s) {
+  const cap = cfg.capital, rpl = s.riskPerLot, cost = s.lotCost;
+  const chg = AN.charges({ tb: s.ltp * s.lotSize, ts: s.ltp * s.lotSize, orders: 2 }, chCfg()).total;
+  const pct = rpl / cap * 100;
+  let lvl = 'ok', msg = 'Capital ke hisaab se risk theek hai.';
+  if (cost > cap) { lvl = 'bad'; msg = '1 lot ka premium (' + inr(cost) + ') tere capital se zyada hai. Yeh trade afford nahi hoga, skip karo.'; }
+  else if (pct > 5) { lvl = 'bad'; msg = '1 lot ka SL risk capital ka ' + pct.toFixed(0) + '% hai. Safe limit 5% tak hai. Yeh trade skip karna behtar.'; }
+  else if (pct > 2.5) { lvl = 'warn'; msg = 'Risk thoda zyada (' + pct.toFixed(1) + '%). Sirf 1 lot lo, aur 2 loss ke baad us din band.'; }
+  const html = '<div class="card"><div class="j"><b>Capital check</b><span class="badge ' + (lvl === 'ok' ? 'b-up' : lvl === 'warn' ? 'b-no' : 'b-dn') + '">' + (lvl === 'ok' ? 'OK' : lvl === 'warn' ? 'SAVDHAN' : 'SKIP') + '</span></div>' +
+    '<div class="kv" style="margin-top:8px"><span>Capital</span><span>' + inr(cap) + '</span>' +
+    '<span>1 lot ka cost</span><span>' + inr(cost) + '</span>' +
+    '<span>1 lot ka SL risk</span><span>' + inr(rpl) + ' (' + pct.toFixed(1) + '%)</span>' +
+    '<span>3 lagataar SL tak</span><span class="neg">' + inr(rpl * 3) + ' (' + (pct * 3).toFixed(0) + '% capital)</span>' +
+    '<span>Charges (1 lot, aana-jaana)</span><span>~' + inr(chg) + (rpl > 0 ? ' (' + (chg / rpl * 100).toFixed(0) + '% of risk)' : '') + '</span></div>' +
+    '<p class="note">' + msg + '</p></div>';
+  return { lvl, pct, html };
 }
 
 /* ---------- run ---------- */
@@ -285,17 +357,33 @@ function createPaper(sg, s) {
   const l = paperList(); l.unshift(t); savePaper(l);
   return t;
 }
+// Shadow stops: after a paper trade fills, keep watching the option for 45 min and note
+// what a wider premium stop (33% / 40%) would have done. Sampled once a minute, so approximate.
+const SHADOW = [25, 33, 40];
+function shadowStep(t, ltp, now) {
+  if (!t.fillPrice || t.shDone || !(ltp > 0)) return;
+  t.sh = t.sh || {};
+  SHADOW.forEach((v) => { if (!t.sh[v] && ltp <= t.fillPrice * (1 - v / 100)) t.sh[v] = { hit: true, at: now }; });
+  t.shLast = ltp;
+  if (now - t.fillAt >= 45 * 60000) t.shDone = true;
+}
+const shadowRet = (t, v) => (t.sh && t.sh[v] ? -v : (t.shLast / t.fillPrice - 1) * 100);
 async function manageTrades() {
-  const l = paperList(), act = l.filter((t) => PP.ACTIVE.includes(t.state));
+  const l = paperList(), now0 = Date.now();
+  const act = l.filter((t) => PP.ACTIVE.includes(t.state) || (t.state === 'CLOSED' && t.fillPrice && t.fillAt && !t.shDone && t.date === today() && now0 - t.fillAt < 50 * 60000));
   if (!act.length) return 0;
   for (const t of act) {
     try {
-      const q = await api('/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(t.key));
+      const q = await api('/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(t.key), { ttl: TTL.optQuote });
       const row = Object.values(q.data || {})[0];
       if (!row) continue;
+      if (t.state === 'CLOSED') { shadowStep(t, row.last_price, Date.now()); continue; }
       const bid = row.depth && row.depth.buy && row.depth.buy[0] ? row.depth.buy[0].price : 0;
       const ask = row.depth && row.depth.sell && row.depth.sell[0] ? row.depth.sell[0].price : 0;
       const ev = PP.onQuote(t, { ltp: row.last_price, bid, ask, spot: lastSpot[t.sym] }, Date.now(), chCfg());
+      if (ev.includes('FILLED')) t.fillSpot = lastSpot[t.sym];
+      if (ev.includes('CLOSED')) t.exitSpot = lastSpot[t.sym];
+      shadowStep(t, row.last_price, Date.now());
       const nm = t.idxName + ' ' + t.strike + ' ' + t.option;
       if (hasNative()) {
         if (ev.includes('FILLED')) window.Native.notify('PAPER: entry fill', nm + ' @ ' + f2(t.fillPrice));
@@ -332,6 +420,7 @@ async function run(demo) {
   try {
     const x = await compute(sym, demo);
     last = { r: x.r, d: x.d };
+    if (!x.r.noTrade && !x.d.demo) logSignal(x.r.signal, sym, x.r.spot);
     render(x.r, x.d, x.maxRiskRs);
   } catch (e) {
     out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>';
@@ -385,6 +474,34 @@ function notifyOnce(tag, title, text) {
   seen.push(tag); sv(k, seen);
   if (hasNative()) window.Native.notify(title, text);
 }
+// One full scan of one index: analysis, decision log, signal log, notification, paper trade.
+async function scanSymbol(s) {
+  const nm = s === 'NIFTY' ? 'Nifty' : 'BankNifty';
+  const x = await compute(s, false);
+  if (cfg.zhOn) {
+    const z = zhEval(x.d), zk = 'sb_zhn_' + today();
+    if (!z.noTrade && !ld(zk, false)) {
+      sv(zk, true);
+      const g = z.signal;
+      if (hasNative()) window.Native.notify('ZERO-HERO (HIGH RISK): ' + g.indexName + ' ' + g.option,
+        g.strike + ' ' + g.option + ' | Entry ' + f2(g.entryLo) + '-' + f2(g.entryHi) + ' | SL ' + f2(g.sl) + ' | T1 ' + f2(g.t1) + ' | ' + g.lots + ' lot | Max loss ' + inr(g.maxLoss));
+    }
+  }
+  dlog(s, x.r);
+  if (x.r.noTrade) return nm + ': No Trade';
+  const sg = x.r.signal, key = s + sg.option + sg.strike, done = ld(notifKey(), []);
+  logSignal(sg, s, x.r.spot);
+  if (!done.some((q) => q.key === key) && done.length < 2) {
+    done.push({ key, t: hm(), tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, sym: s }); sv(notifKey(), done);
+    createPaper(sg, s);
+    sv('sb_last', { date: today(), time: hm(), r: x.r, d: { expiry: x.d.expiry, demo: false }, maxRiskRs: x.maxRiskRs });
+    const cc = capCheck(sg);
+    const txt = sg.strike + ' ' + sg.option + ' (' + sg.strikeType + ') | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | T1 ' + f2(sg.t1) +
+      ' | ' + sg.lots + ' lot | ' + sg.validUntil + ' tak' + (cc.lvl !== 'ok' ? ' | CAPITAL RISK ' + cc.pct.toFixed(0) + '%!' : '');
+    if (hasNative()) window.Native.notify('SIGNAL: ' + sg.indexName + ' ' + sg.option, txt);
+  }
+  return nm + ': SIGNAL ' + sg.strike + ' ' + sg.option;
+}
 async function autoTick() {
   if (scanning || !ld('sb_auto', false)) return;
   const now = Date.now(), nm = E.istMin(now), dow = new Date(now + 19800000).getUTCDay();
@@ -396,36 +513,15 @@ async function autoTick() {
   const lines = [];
   try {
     for (const s of ['NIFTY', 'BANKNIFTY']) {
-      try {
-        const x = await compute(s, false);
-        if (cfg.zhOn) {
-          const z = zhEval(x.d), zk = 'sb_zhn_' + today();
-          if (!z.noTrade && !ld(zk, false)) {
-            sv(zk, true);
-            const g = z.signal;
-            if (hasNative()) window.Native.notify('ZERO-HERO (HIGH RISK): ' + g.indexName + ' ' + g.option,
-              g.strike + ' ' + g.option + ' | Entry ' + f2(g.entryLo) + '-' + f2(g.entryHi) + ' | SL ' + f2(g.sl) + ' | T1 ' + f2(g.t1) + ' | ' + g.lots + ' lot | Max loss ' + inr(g.maxLoss));
-          }
-        }
-        if (x.r.noTrade) { lines.push((s === 'NIFTY' ? 'Nifty' : 'BankNifty') + ': No Trade'); continue; }
-        const sg = x.r.signal, key = s + sg.option + sg.strike, done = ld(notifKey(), []);
-        lines.push((s === 'NIFTY' ? 'Nifty' : 'BankNifty') + ': SIGNAL ' + sg.strike + ' ' + sg.option);
-        if (!done.some((q) => q.key === key) && done.length < 2) {
-          done.push({ key, t: hm(), tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, sym: s }); sv(notifKey(), done);
-          createPaper(sg, s);
-          sv('sb_last', { date: today(), time: hm(), r: x.r, d: { expiry: x.d.expiry, demo: false }, maxRiskRs: x.maxRiskRs });
-          const txt = sg.strike + ' ' + sg.option + ' (' + sg.strikeType + ') | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | T1 ' + f2(sg.t1) +
-            ' | ' + sg.lots + ' lot | ' + sg.validUntil + ' tak';
-          if (hasNative()) window.Native.notify('SIGNAL: ' + sg.indexName + ' ' + sg.option, txt);
-        }
-      } catch (e) {
+      try { lines.push(await scanSymbol(s)); }
+      catch (e) {
         lines.push((s === 'NIFTY' ? 'Nifty' : 'BankNifty') + ': error');
         if (/Token/i.test(e.message)) notifyOnce('token', 'SignalBot: token problem', 'Upstox token galat ya expire. Settings mein naya daalo.');
         else autoMsg = 'Error: ' + e.message;
       }
     }
     autoMsg = 'Last check ' + hm() + ' | ' + lines.join(' | ');
-  } finally { scanning = false; setAutoUi(); }
+  } finally { scanning = false; setAutoUi(); if (curTab === 'ch') { chartRedraw(); chartSigList(); } }
 }
 function startService() { if (hasNative() && !svcOn) { window.Native.startScan(); svcOn = true; } }
 function stopService() { if (hasNative() && svcOn) { window.Native.stopScan(); svcOn = false; } }
@@ -475,6 +571,7 @@ function render(r, d, maxRiskRs) {
     h += '<div class="card"><b>Extra notes</b>' + r.notes.map((n) => '<p class="note">' + n + '</p>').join('') +
       (d.demo ? '' : '<button class="btn" id="took">Trade liya (journal mein likho)</button><button class="btn ghost" id="ptook">Paper trade shuru karo</button>') + '</div>';
   }
+  if (!r.noTrade) h += capCheck(s).html;
   if (d.health) {
     const hh = d.health, m = hh.metrics || {};
     h += '<div class="card"><div class="j"><b>Data health</b><span class="badge ' + (hh.ok ? (hh.issues.length ? 'b-no' : 'b-up') : 'b-dn') + '">' + (hh.ok ? (hh.issues.length ? 'WARN' : 'OK') : 'BAD') + '</span></div>' +
@@ -507,6 +604,99 @@ function render(r, d, maxRiskRs) {
   };
 }
 
+/* ---------- live chart tab ---------- */
+let chSym = 'NIFTY', chTimer = null, chData = null, chModel = null, chLay = null, chScanAt = 0, chLoading = false;
+document.querySelectorAll('#chseg button').forEach((b) => b.onclick = () => {
+  chSym = b.dataset.s; chData = null; chModel = null;
+  document.querySelectorAll('#chseg button').forEach((x) => x.classList.toggle('on', x === b));
+  chartLoad(true).then(chartSigList);
+});
+const marketLive = () => { const n = Date.now(), nm = E.istMin(n), d = new Date(n + 19800000).getUTCDay(); return d > 0 && d < 6 && nm >= 555 && nm <= 935; };
+const chartSigs = () => ld(sigKey(), []).filter((x) => x.sym === chSym);
+const chartPaper = () => paperList().filter((t) => t.date === today() && t.sym === chSym);
+function chartRedraw() {
+  const cv = $('chcv');
+  if (!cv || !chData || curTab !== 'ch') return;
+  chModel = LC.model(chData.candles, Date.now(), chartSigs(), chartPaper(), chData.ltp);
+  chLay = LC.draw(cv, chModel, { w: cv.clientWidth || 340, h: 320, dpr: window.devicePixelRatio || 1 });
+}
+function chartStatus() {
+  const g = guard.stats(), d = chData, tm = d ? new Date(d.at + 19800000).toISOString().slice(11, 19) : '-';
+  $('chst').innerHTML = (d && d.ltp ? '<b>' + d.ltp.toFixed(2) + '</b> | ' : '') + 'update ' + tm + ' | ' + (marketLive() ? 'market chalu, har 20 sec' : 'market band') +
+    '<br>API use: ' + g.perMin + '/min (apni limit ' + g.capMin + ')' + (g.paused ? ' | <span class="neg">broker ne roka, ' + g.pausedSec + ' sec ruk raha hoon</span>' : '');
+}
+async function chartLoad(manual) {
+  const st = $('chst');
+  if (!cfg.token) { st.textContent = 'Pehle Settings mein Upstox token daalo.'; return; }
+  if (chLoading) return;
+  chLoading = true;
+  const s = chSym, pr = manual ? undefined : 'low';
+  try {
+    const [cd, q] = await Promise.all([
+      api(cPath(s), { ttl: TTL.candle, prio: pr, staleOk: true }),
+      api(qPath(s), { ttl: TTL.quote, prio: pr, staleOk: true }),
+    ]);
+    if (s !== chSym) return;
+    const e = Object.entries(q.data || {}).find(([k]) => k.toLowerCase().includes(s === 'NIFTY' ? 'nifty 50' : 'nifty bank'));
+    const ltp = e ? e[1].last_price : null;
+    if (ltp) lastSpot[s] = ltp;
+    const candles = E.parseCandles((cd.data && cd.data.candles) || []);
+    chData = { candles, ltp, at: Date.now() };
+    if (!candles.length) st.textContent = 'Abhi koi intraday candle nahi (market band ya holiday).';
+    else chartStatus();
+    chartRedraw();
+  } catch (e) { st.textContent = 'Chart update nahi hua: ' + e.message + (chData ? ' (purana chart dikh raha hai)' : ''); }
+  finally { chLoading = false; }
+}
+function chartSigList() {
+  const el = $('chsigs'); if (!el) return;
+  const a = chartSigs().slice().reverse();
+  el.innerHTML = a.length ? '<h1 style="font-size:15px;margin-top:6px">Aaj ke signals (chart pe plot)</h1>' + a.map((x) =>
+    '<div class="card"><div class="j"><b style="color:var(--' + (x.dir > 0 ? 'up' : 'dn') + ')">' + (x.dir > 0 ? '&#9650;' : '&#9660;') + ' ' + esc(x.option) + ' ' + esc(x.strike) + '</b><span class="note">' + hmOf(x.tMs) + ' | index ' + f2(x.spot) + '</span></div>' +
+    '<div class="kv" style="margin-top:6px"><span>Entry zone</span><span>' + f2(x.entryLo) + ' - ' + f2(x.entryHi) + '</span><span>Premium SL</span><span class="neg">' + f2(x.sl) + '</span><span>T1 / T2</span><span class="pos">' + f2(x.t1) + ' / ' + f2(x.t2) + '</span><span>Index SL (close)</span><span class="neg">' + (x.inv || '-') + '</span><span>Lots</span><span>' + x.lots + '</span></div></div>').join('')
+    : '<p class="note">Abhi tak koi signal nahi aaya. Zyadatar din No Trade hi hota hai, yeh normal hai. Signal aate hi yahan marker aur levels dikhenge.</p>';
+}
+async function chartScan() {
+  const nm = E.istMin(Date.now());
+  if (ld('sb_auto', false) || scanning || !cfg.token || !marketLive() || nm < 570 || nm > (cfg.zhOn ? 885 : 870) || Date.now() - chScanAt < 60000) return;
+  chScanAt = Date.now(); scanning = true;
+  let msg;
+  try { await manageTrades(); msg = 'Signal scan ' + hm() + ': ' + await scanSymbol(chSym); }
+  catch (e) { msg = 'Signal scan error: ' + e.message; }
+  finally { scanning = false; }
+  if ($('chscan') && curTab === 'ch') $('chscan').textContent = msg;
+  chartRedraw(); chartSigList();
+}
+async function chartTick() {
+  if (document.hidden || curTab !== 'ch') return;
+  if (marketLive()) await chartLoad(false);
+  chartStatus();
+  await chartScan();
+  chartSigList();
+}
+function chartStart() {
+  chartStop();
+  $('chscan').textContent = ld('sb_auto', false) ? 'Auto-scan chalu hai: signal wahi se aate hain aur yahan plot hote hain.' : 'Chart khula hai: is index ka signal-scan bhi har minute chalta hai (9:30-2:30). Notification ke liye Auto-scan chalu rakho.';
+  chartLoad(true).then(() => { chartSigList(); chartScan(); });
+  chTimer = setInterval(chartTick, 20000);
+}
+function chartStop() { if (chTimer) { clearInterval(chTimer); chTimer = null; } }
+document.addEventListener('visibilitychange', () => { if (curTab === 'ch') { if (document.hidden) chartStop(); else chartStart(); } });
+window.addEventListener('resize', () => { if (curTab === 'ch') chartRedraw(); });
+$('chref').onclick = () => chartLoad(true).then(chartSigList);
+$('chcv').onclick = (ev) => {
+  if (!chModel) return;
+  const r = $('chcv').getBoundingClientRect(), k = LC.slotAtX(chLay, ev.clientX - r.left);
+  const b = chModel.bars.find((x) => x.k === k), mk = chModel.marks.filter((m) => m.k === k);
+  let t = b ? E.hhmm(555 + k * 5) + ' | O ' + f2(b.o) + ' H ' + f2(b.h) + ' L ' + f2(b.l) + ' C ' + f2(b.c) + (b.forming ? ' (chal rahi)' : '') : E.hhmm(555 + k * 5) + ': candle nahi';
+  mk.forEach((m) => {
+    if (m.type === 'signal') t += ' | SIGNAL ' + m.label + ' entry ' + f2(m.sig.entryLo) + '-' + f2(m.sig.entryHi) + ' SL ' + f2(m.sig.sl) + ' T1 ' + f2(m.sig.t1);
+    else if (m.type === 'fill') t += ' | paper fill';
+    else t += ' | paper exit (' + (m.why || '') + ')';
+  });
+  $('chinfo').textContent = t;
+};
+
 /* ---------- stats rendering ---------- */
 const pc = (x) => (x == null ? '-' : (x * 100).toFixed(1) + '%');
 const rr2 = (x) => (x == null ? '-' : (x >= 0 ? '+' : '') + x.toFixed(2) + 'R');
@@ -531,6 +721,15 @@ function spark(eq) {
 }
 
 /* ---------- paper tab ---------- */
+function shadowCard(l) {
+  const sd = l.filter((t) => t.shDone && t.fillPrice && t.shLast > 0);
+  if (!sd.length) return '';
+  const rows = SHADOW.map((v) => {
+    const rets = sd.map((t) => shadowRet(t, v)), hit = sd.filter((t) => t.sh && t.sh[v]).length, avg = rets.reduce((a, b) => a + b, 0) / rets.length;
+    return '<span>SL ' + v + '%: SL hit ' + hit + '/' + sd.length + '</span><span class="' + (avg >= 0 ? 'pos' : 'neg') + '">avg ' + (avg >= 0 ? '+' : '') + avg.toFixed(1) + '%</span>';
+  }).join('');
+  return '<div class="card"><b>Shadow SL: kaunsa stop behtar?</b><div class="kv" style="margin-top:8px">' + rows + '</div><p class="note">Har paper trade ko fill ke baad 45 min dekha. Alag premium stop hota to average return kya hota. Har minute ka sample hai, isliye andaza hai. ' + (sd.length < 20 ? 'Abhi sirf ' + sd.length + ' trade hain, nateeja mat nikalo (20-30+ chahiye).' : '') + '</p></div>';
+}
 function renderPaper() {
   const l = paperList(), closed = l.filter((t) => t.state === 'CLOSED'), active = l.filter((t) => PP.ACTIVE.includes(t.state));
   const missed = l.filter((t) => t.state === 'MISSED').length;
@@ -548,6 +747,7 @@ function renderPaper() {
       '<span>Charges / gross profit</span><span>' + (ex.chargesPctOfGross == null ? '-' : ex.chargesPctOfGross.toFixed(1) + '%') + '</span>' +
       '<span>Missed (entry nahi mili)</span><span>' + missed + '</span></div></div>';
   }
+  h += shadowCard(l);
   if (active.length) {
     h += '<div class="card"><b>Chalu trades</b>' + active.map((t) => '<div class="chk"><span>' + t.idxName + ' ' + t.strike + ' ' + t.option + '</span><em>' + t.state + (t.fillPrice ? ' @ ' + f2(t.fillPrice) : '') + '</em></div>').join('') + '</div>';
   }
@@ -646,6 +846,7 @@ $('btgo').onclick = () => btGo('live');
 $('btrw').onclick = () => btGo('rw');
 
 /* ---------- journal ---------- */
+const TAGS = [{ n: 'Plan follow kiya', good: 1 }, { n: 'Dar se jaldi exit' }, { n: 'SL door kiya / hataya' }, { n: 'Late entry' }, { n: 'Overtrade / revenge' }, { n: 'Size zyada' }, { n: 'SL hit, phir wapas gaya' }];
 function renderJournal() {
   const j = ld('sb_journal', []);
   const done = j.filter((x) => x.exit != null);
@@ -655,6 +856,17 @@ function renderJournal() {
   let h = '<h1>Journal</h1><div class="card"><div class="kv"><span>Closed trades</span><span>' + done.length + '</span>' +
     '<span>Win rate</span><span>' + (done.length ? Math.round(wins * 100 / done.length) + '%' : '-') + '</span>' +
     '<span>Total P&amp;L (charges ke baad)</span><span class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + inr(tot) + '</span></div></div>';
+  const dl = ld(dlKey(), []);
+  h += '<details class="card"><summary>Aaj ka decision log (' + dl.length + ')</summary><p class="note">App ne har scan mein kya socha. "No Trade" ki wajah padhna seekhne ka sabse accha tareeka hai.</p>' +
+    (dl.length ? dl.slice(0, 40).map((x) => '<div class="chk"><span>' + (x.sig ? '&#9650; ' : '') + (x.sym === 'NIFTY' ? 'Nifty' : 'BankN') + ': ' + esc(x.reason) + '</span><em>' + hmOf(x.first) + (x.n > 1 ? '-' + hmOf(x.last) + ' x' + x.n : '') + '</em></div>').join('') : '<p class="note">Aaj abhi koi scan nahi hua.</p>') + '</details>';
+  const tagged = done.filter((x) => x.tags && x.tags.length);
+  if (tagged.length) {
+    h += '<div class="card"><b>Tag ke hisaab se P&amp;L</b><div class="kv" style="margin-top:8px">' + TAGS.map((t) => {
+      const g = tagged.filter((x) => x.tags.includes(t.n)); if (!g.length) return '';
+      const sum = g.reduce((a, x) => a + pl(x), 0);
+      return '<span>' + t.n + ' (' + g.length + ')</span><span class="' + (sum >= 0 ? 'pos' : 'neg') + '">' + inr(sum) + '</span>';
+    }).join('') + '</div><p class="note">Dekho: nuksan strategy se hua ya apni galti (tag) se.</p></div>';
+  }
   const rec = done.slice(0, 20);
   if (rec.length >= 20 && rec.filter((x) => pl(x) > 0).length / rec.length < 0.4) {
     h += '<div class="card"><span class="badge b-dn">REVIEW</span><p class="note">Pichle 20 trades mein win rate 40% se kam hai. Naye trade rok kar journal review karo (chat mein paste karo).</p></div>';
@@ -666,11 +878,19 @@ function renderJournal() {
     if (x.exit == null) {
       h += '<div class="row" style="margin-top:8px"><input type="number" inputmode="decimal" id="ex' + x.id + '" placeholder="Exit price"><button class="btn" style="width:auto;margin:0;padding:0 16px" data-id="' + x.id + '">Close</button></div>';
     } else {
-      h += '<div class="big ' + (pl(x) >= 0 ? 'pos' : 'neg') + '">' + inr(pl(x)) + '</div><div class="note">Exit ' + f2(x.exit) + '</div>';
+      h += '<div class="big ' + (pl(x) >= 0 ? 'pos' : 'neg') + '">' + inr(pl(x)) + '</div><div class="note">Exit ' + f2(x.exit) + '</div><div>' +
+        TAGS.map((t, i) => '<button class="chip' + (t.good ? ' good' : '') + ((x.tags || []).includes(t.n) ? ' on' : '') + '" data-tg="' + x.id + '|' + i + '">' + t.n + '</button>').join('') + '</div>';
     }
     h += '</div>';
   });
   $('t-jr').innerHTML = h;
+  $('t-jr').querySelectorAll('button[data-tg]').forEach((b) => b.onclick = () => {
+    const [id, i] = b.dataset.tg.split('|'), arr = ld('sb_journal', []), it = arr.find((a) => String(a.id) === id);
+    if (!it) return;
+    it.tags = it.tags || []; const n = TAGS[+i].n, p = it.tags.indexOf(n);
+    if (p >= 0) it.tags.splice(p, 1); else it.tags.push(n);
+    sv('sb_journal', arr); renderJournal();
+  });
   $('t-jr').querySelectorAll('button[data-id]').forEach((b) => b.onclick = () => {
     const v = parseFloat($('ex' + b.dataset.id).value);
     if (isNaN(v)) return;
@@ -683,7 +903,7 @@ function renderJournal() {
 $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
   cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
-  sv('sb_cfg', cfg); angelJwt = null; $('saved').textContent = 'Save ho gaya.';
+  sv('sb_cfg', cfg); angelJwt = null; guard.clear(); $('saved').textContent = 'Save ho gaya.';
 };
 </script>
 </body>
