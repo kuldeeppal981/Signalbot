@@ -103,6 +103,8 @@
     if (nm < 570) return stop('9:30 se pehle signal nahi. Opening range abhi ban rahi hai.');
     if (nm > 870) return stop('2:30 PM ke baad naya entry nahi. Theta aur reversal ka risk.');
     if (signalsToday >= 2) return stop('Aaj ke 2 signals ho chuke. Quality over quantity, ab kal.');
+    if (inp.health && inp.health.block) return stop('Data health: ' + inp.health.block + ' Signal rok diya.');
+    if (inp.openForSymbol) return stop('Is index mein pehle se open/pending trade hai. Naya signal nahi (stack mat karo).');
     if (inp.lastLossAgoMin != null && inp.lastLossAgoMin < 15) return stop('Pichle loss ko 15 minute nahi hue. Cooldown, revenge trade se bacho.');
     if ((inp.consecLosses || 0) >= 2) return stop('Aaj lagataar 2 loss hue. Overtrading se bacho, aaj ke liye bas.');
     if (maxRiskRs > 0 && (inp.dayPnl || 0) <= -2 * maxRiskRs) return stop('Aaj ka loss limit (2x risk) hit ho gaya. Ab trade band.');
@@ -117,9 +119,19 @@
     if (Math.abs(score) < 4 || orb !== dir || trendEma !== dir) {
       return stop('Setup clear nahi (score ' + score + '/6). Trend, opening range aur EMA teeno ek taraf nahi.');
     }
+    const rs = inp.recentSignals || [];
+    if (rs.some((x) => x.dir === dir && nowMs - x.t < 30 * 60000)) return stop('Isi direction ka signal pichle 30 min mein aa chuka. Duplicate nahi.');
+    if (rs.some((x) => x.dir === -dir && nowMs - x.t < 20 * 60000)) return stop('Pichle 20 min mein ulte direction ka signal tha. Whipsaw, ruko.');
     const extLimit = symbol === 'BANKNIFTY' ? 0.007 : 0.005;
     if (Math.abs(spot - ema20) / spot > extLimit) {
       return stop('Price EMA20 se bahut door hai (extended). Pullback ka wait karo, chase mat karo.');
+    }
+    if (inp.indexOnly) {
+      const l3 = c5.slice(-3);
+      const inv = dir > 0 ? Math.min(ema20, ...l3.map((x) => x.l)) : Math.max(ema20, ...l3.map((x) => x.h));
+      res.noTrade = false; res.reason = 'Index-level setup (score ' + score + '/5).';
+      res.signal = { indexOnly: true, option: dir > 0 ? 'CE' : 'PE', dir, spot, invalidation: inv };
+      return res;
     }
     if (!chain || !chain.length) return stop('Option chain data nahi mila.');
     const roomLevel = dir > 0 ? resistance : support;
