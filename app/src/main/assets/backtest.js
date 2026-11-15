@@ -20,7 +20,7 @@
       const res = e.analyze({
         symbol: opts.symbol, spot: candles[i].c, candles: candles.slice(0, i + 1), vix: null, chain: [], lotSize: 1,
         nowMs, signalsToday: signals, indexOnly: true, maxRiskRs: 1, dayPnl: dayR, consecLosses: consec,
-        lastLossAgoMin: lastLossT == null ? null : (nowMs - lastLossT) / 60000, recentSignals: recent,
+        lastLossAgoMin: lastLossT == null ? null : (nowMs - lastLossT) / 60000, recentSignals: recent, flags: opts.flags,
       });
       if (res.noTrade || !res.signal) continue;
       const sg = res.signal, dir = sg.dir;
@@ -68,6 +68,42 @@
       byDir: by((t) => t.option), byHour: by((t) => t.hour), byWhy: by((t) => t.why),
       equity: trades.reduce((a, t) => { a.push((a.length ? a[a.length - 1] : 0) + t.r); return a; }, []),
     };
+  };
+
+  const sd = (a) => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / Math.max(1, a.length - 1)); };
+  BT.VARIANTS = [
+    { name: 'Baseline', flags: {} },
+    { name: '+ Breakout confirm', flags: { confirm: true } },
+    { name: '+ Sideways filter', flags: { regime: true } },
+    { name: 'Dono filter', flags: { confirm: true, regime: true } },
+  ];
+  // Compare variants on the same days. First `split` fraction of days = in-sample, rest = out-of-sample.
+  BT.compare = async function (days, opts, split, tick) {
+    const cut = Math.max(1, Math.floor(days.length * (split || 0.7)));
+    const rows = [];
+    for (const v of BT.VARIANTS) {
+      const tin = [], tout = [];
+      for (let i = 0; i < days.length; i++) {
+        (i < cut ? tin : tout).push(...BT.simulateDay(days[i], Object.assign({}, opts, { flags: v.flags })));
+        if (tick && i % 4 === 0) await tick(v.name, i + 1, days.length);
+      }
+      const f = (t) => { const st = A().stats(t.map((x) => ({ r: x.r }))); st.se = t.length > 1 ? sd(t.map((x) => x.r)) / Math.sqrt(t.length) : null; return st; };
+      rows.push({ name: v.name, flags: v.flags, inS: f(tin), outS: f(tout) });
+    }
+    const base = rows[0];
+    // Verdict must beat noise: out-of-sample expectancy has to be > 2 standard errors above zero,
+    // and better than baseline in BOTH halves. (3 variants are tried, so the bar is stricter than 1.65.)
+    rows.forEach((r, i) => {
+      if (!i) { r.verdict = 'Reference'; return; }
+      const z = r.outS.se ? r.outS.expR / r.outS.se : 0;
+      r.z = z;
+      if (r.outS.n < 25) r.verdict = 'Out-of-sample sample kam (' + r.outS.n + '). Pakka nahi.';
+      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR && z >= 2) r.verdict = 'Dono hisson mein behtar aur noise se upar. Rakhne layak.';
+      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR) r.verdict = 'Behtar dikh raha hai, par ±error ke andar (noise ho sakta hai). Pakka nahi, aur data chahiye.';
+      else if (r.inS.expR > base.inS.expR) r.verdict = 'Sirf purane data mein behtar. Overfit ka shak, mat lagao.';
+      else r.verdict = 'Baseline se behtar nahi.';
+    });
+    return { rows, cut, nDays: days.length };
   };
 
   // Deterministic random-walk days (no edge by construction) to sanity-check the machinery.

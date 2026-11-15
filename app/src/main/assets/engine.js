@@ -122,6 +122,21 @@
     const rs = inp.recentSignals || [];
     if (rs.some((x) => x.dir === dir && nowMs - x.t < 30 * 60000)) return stop('Isi direction ka signal pichle 30 min mein aa chuka. Duplicate nahi.');
     if (rs.some((x) => x.dir === -dir && nowMs - x.t < 20 * 60000)) return stop('Pichle 20 min mein ulte direction ka signal tha. Whipsaw, ruko.');
+    // Optional filters (default off until validated by A/B backtest + paper trading).
+    const fl = inp.flags || {};
+    if (fl.confirm) {
+      const l2 = c5.slice(-2);
+      const ok = l2.length === 2 && l2.every((x) => (dir > 0 ? x.c > orHigh : x.c < orLow));
+      if (!ok) return stop('Breakout confirm nahi: pichli 2 closed 5-min candle opening range ke bahar close nahi hui (fake breakout ka risk).');
+    }
+    if (fl.regime) {
+      const w = closes5.slice(-13);
+      let path = 0;
+      for (let i = 1; i < w.length; i++) path += Math.abs(w[i] - w[i - 1]);
+      const er = path > 0 ? Math.abs(w[w.length - 1] - w[0]) / path : 0;
+      res.snap.er = er;
+      if (er < (fl.erMin || 0.3)) return stop('Market choppy/sideways hai (trend efficiency ' + er.toFixed(2) + '). Trend saaf nahi.');
+    }
     const extLimit = symbol === 'BANKNIFTY' ? 0.007 : 0.005;
     if (Math.abs(spot - ema20) / spot > extLimit) {
       return stop('Price EMA20 se bahut door hai (extended). Pullback ka wait karo, chase mat karo.');

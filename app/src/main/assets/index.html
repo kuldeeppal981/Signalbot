@@ -68,7 +68,9 @@ input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--li
       <label for="btdays">Kitne trading din</label>
       <select id="btdays"><option>20</option><option selected>40</option><option>60</option><option>100</option></select>
       <button class="btn" id="btgo">Backtest chalao (Upstox data)</button>
+      <button class="btn" id="btab">A/B test: filters kaam karte hain? (Upstox data)</button>
       <button class="btn ghost" id="btrw">Sanity test (random data, koi edge nahi)</button>
+      <button class="btn ghost" id="btabrw">A/B sanity (random data)</button>
       <p class="note" id="btstat"></p>
     </div>
     <div id="btout"></div>
@@ -93,6 +95,11 @@ input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--li
       <select id="zhon"><option value="0">Band</option><option value="1">Chalu</option></select>
       <label for="zhb">Zero-Hero budget per trade (Rs). 0 = capital ka 2%</label>
       <input id="zhb" type="number" inputmode="numeric">
+      <label for="flc">Filter: breakout candle-close confirmation</label>
+      <select id="flc"><option value="0">Band</option><option value="1">Chalu</option></select>
+      <label for="flr">Filter: sideways/choppy market block</label>
+      <select id="flr"><option value="0">Band</option><option value="1">Chalu</option></select>
+      <p class="note">Yeh dono pehle Backtest tab ke A/B test se check karo, phir hi chalu karo.</p>
       <label for="ppon">Paper trading (signal aate hi virtual trade)</label>
       <select id="ppon"><option value="1">Chalu</option><option value="0">Band</option></select>
       <label for="chb">Brokerage per order (Rs)</label>
@@ -121,7 +128,7 @@ const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = w
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15 }, ld('sb_cfg', {}));
+let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false }, ld('sb_cfg', {}));
 let sym = 'NIFTY', last = null;
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
@@ -313,7 +320,7 @@ async function compute(s, demo) {
   const rk = demo ? { consecLosses: 0, dayPnl: 0, lastLossAgoMin: null, openForSymbol: false, recentSignals: [] } : riskState(s);
   const ivKey = 'sb_iv_' + s, ivStore = demo ? [] : ld(ivKey, []);
   const signalsToday = demo ? 0 : Math.max(ld(cntKey(), 0), ld(notifKey(), []).length);
-  const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
+  const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
   if (d.angelErr) r.notes.unshift('Angel cross-check fail hua (' + d.angelErr + '). Sirf Upstox data pe chal raha hai.');
   return { r, d, maxRiskRs };
@@ -576,13 +583,42 @@ async function fetchHistory(s, nDays) {
   const td = today();
   return Object.keys(byDay).sort().filter((d) => d < td && byDay[d].length >= 330).slice(-nDays).map((d) => byDay[d]);
 }
+let btCache = null;
+async function getDays(kind) {
+  if (kind === 'rw') return BTM.randomDays(120, 20260116, 0.0004);
+  if (!cfg.token) throw new Error('Pehle Settings mein Upstox token daalo.');
+  const n = parseInt($('btdays').value, 10);
+  if (btCache && btCache.sym === btSym && btCache.n === n && btCache.day === today()) return btCache.days;
+  const days = await fetchHistory(btSym, n);
+  btCache = { sym: btSym, n, day: today(), days };
+  return days;
+}
+async function btAB(kind) {
+  const out = $('btout'), st = $('btstat');
+  ['btgo', 'btrw', 'btab', 'btabrw'].forEach((i) => ($(i).disabled = true)); out.innerHTML = '';
+  try {
+    const days = await getDays(kind);
+    if (days.length < 20) throw new Error('Kam se kam 20 din ka data chahiye. Mila: ' + days.length);
+    const res = await BTM.compare(days, { rr: 2, symbol: btSym }, 0.7, async (nm, i, n) => { st.textContent = nm + ': din ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
+    st.textContent = '';
+    const cell = (x) => x.n ? x.n + ' | ' + pc(x.winRate) + ' | ' + rr2(x.expR) + (x.se != null ? ' ±' + x.se.toFixed(2) : '') : 'koi trade nahi';
+    let h = '<div class="card"><b>A/B test' + (kind === 'rw' ? ' (random data sanity)' : ' (' + (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ')') + '</b><p class="note">' + res.nDays + ' din. Pehle ' + res.cut + ' din = in-sample, baaki ' + (res.nDays - res.cut) + ' din = out-of-sample. Format: trades | win rate | expectancy ±error (index R).</p></div>';
+    res.rows.forEach((r) => {
+      h += '<div class="card"><b>' + r.name + '</b><div class="kv" style="margin-top:8px"><span>In-sample</span><span>' + cell(r.inS) + '</span><span>Out-of-sample</span><span>' + cell(r.outS) + '</span></div><p class="note" style="margin-top:8px">' + r.verdict + '</p></div>';
+    });
+    h += '<p class="note">Rule: filter tabhi chalu karo jab out-of-sample mein bhi baseline se behtar aur positive ho, aur "±error" expectancy ke saamne chhota ho. Ek hi data pe baar baar filter badalne se wo us data pe fit ho jata hai. Charges aur option effects isme nahi hain.</p>';
+    if (kind === 'rw') h += '<p class="note">Random data mein koi edge nahi hota. Yahan koi variant "rakhne layak" bataye to test galat hai.</p>';
+    out.innerHTML = h;
+  } catch (e) { st.textContent = ''; out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>'; }
+  ['btgo', 'btrw', 'btab', 'btabrw'].forEach((i) => ($(i).disabled = false));
+}
+$('btab').onclick = () => btAB('live');
+$('btabrw').onclick = () => btAB('rw');
 async function btGo(kind) {
   const out = $('btout'), st = $('btstat');
   $('btgo').disabled = true; $('btrw').disabled = true; out.innerHTML = '';
   try {
-    let days;
-    if (kind === 'rw') days = BTM.randomDays(120, 20260116, 0.0004);
-    else { if (!cfg.token) throw new Error('Pehle Settings mein Upstox token daalo.'); days = await fetchHistory(btSym, parseInt($('btdays').value, 10)); }
+    const days = await getDays(kind);
     if (!days.length) throw new Error('Historical data nahi mila.');
     const opts = { rr: 2, symbol: btSym }, trades = [];
     for (let i = 0; i < days.length; i++) {
@@ -644,9 +680,9 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
-  cfg = { paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; $('saved').textContent = 'Save ho gaya.';
 };
 </script>
