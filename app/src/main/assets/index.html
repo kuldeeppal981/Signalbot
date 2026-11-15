@@ -214,7 +214,11 @@ async function run(demo) {
       catch (e) { d.angelErr = e.message; angelJwt = null; }
     }
     const maxRiskRs = cfg.capital * cfg.riskPct / 100;
-    const r = E.analyze(Object.assign({}, d, { signalsToday: demo ? 0 : ld(cntKey(), 0), maxRiskRs }));
+    const tj = demo ? [] : ld('sb_journal', []).filter((x) => x.date === today() && x.exit != null).sort((p, q) => p.id - q.id);
+    let consecLosses = 0;
+    for (let i = tj.length - 1; i >= 0 && (tj[i].exit - tj[i].entry) < 0; i--) consecLosses++;
+    const dayPnl = tj.reduce((t, x) => t + (x.exit - x.entry) * x.lots * x.lotSize, 0);
+    const r = E.analyze(Object.assign({}, d, { signalsToday: demo ? 0 : ld(cntKey(), 0), maxRiskRs, consecLosses, dayPnl }));
     if (d.angelErr) r.notes.unshift('Angel cross-check fail hua (' + d.angelErr + '). Sirf Upstox data pe chal raha hai.');
     last = { r, d };
     render(r, d, maxRiskRs);

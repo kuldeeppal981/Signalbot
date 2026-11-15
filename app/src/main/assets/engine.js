@@ -94,6 +94,9 @@
     if (nm < 570) return stop('9:30 se pehle signal nahi. Opening range abhi ban rahi hai.');
     if (nm > 870) return stop('2:30 PM ke baad naya entry nahi. Theta aur reversal ka risk.');
     if (signalsToday >= 2) return stop('Aaj ke 2 signals ho chuke. Quality over quantity, ab kal.');
+    if ((inp.consecLosses || 0) >= 2) return stop('Aaj lagataar 2 loss hue. Overtrading se bacho, aaj ke liye bas.');
+    if (maxRiskRs > 0 && (inp.dayPnl || 0) <= -2 * maxRiskRs) return stop('Aaj ka loss limit (2x risk) hit ho gaya. Ab trade band.');
+    if (inp.expiry && inp.expiry === E.istDate(nowMs) && nm >= 810) return stop('Expiry day 1:30 PM ke baad fresh buy nahi. Theta bahut tez hai.');
     if (vix != null && vix > 24) return stop('India VIX ' + vix.toFixed(1) + ' bahut high. Premium mehenga aur whipsaw zyada.');
     if (inp.altSpot) {
       res.snap.altSpot = inp.altSpot;
