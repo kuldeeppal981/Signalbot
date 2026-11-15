@@ -95,6 +95,12 @@
     if (nm > 870) return stop('2:30 PM ke baad naya entry nahi. Theta aur reversal ka risk.');
     if (signalsToday >= 2) return stop('Aaj ke 2 signals ho chuke. Quality over quantity, ab kal.');
     if (vix != null && vix > 24) return stop('India VIX ' + vix.toFixed(1) + ' bahut high. Premium mehenga aur whipsaw zyada.');
+    if (inp.altSpot) {
+      res.snap.altSpot = inp.altSpot;
+      if (Math.abs(inp.altSpot - spot) / spot > 0.001) {
+        return stop('Upstox aur Angel One ka spot match nahi (' + spot.toFixed(1) + ' vs ' + inp.altSpot.toFixed(1) + '). Data pe bharosa nahi, No Trade.');
+      }
+    }
     if (Math.abs(score) < 4 || orb !== dir || trendEma !== dir) {
       return stop('Setup clear nahi (score ' + score + '/6). Trend, opening range aur EMA teeno ek taraf nahi.');
     }

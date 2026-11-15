@@ -57,6 +57,15 @@ input{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);bac
       <label for="tok">Upstox access token</label>
       <input id="tok" type="password" autocomplete="off" placeholder="Yahan paste karo">
       <p class="note">Token sirf is phone mein save hota hai. Sirf api.upstox.com ko jata hai. Analytics (read-only) token best hai, kyunki isse order nahi lag sakta.</p>
+      <label for="ak">Angel One API key (optional, cross-check ke liye)</label>
+      <input id="ak" type="password" autocomplete="off">
+      <label for="acc">Angel One client code</label>
+      <input id="acc" type="text" autocomplete="off">
+      <label for="apin">Angel One PIN</label>
+      <input id="apin" type="password" autocomplete="off">
+      <label for="atotp">Angel One TOTP secret</label>
+      <input id="atotp" type="password" autocomplete="off">
+      <p class="note">Yeh sab sirf is phone mein save hote hain. Angel ka login sensitive hai, isliye phone lock rakho. Khaali chhodo to Angel use nahi hoga.</p>
       <label for="cap">Capital (Rs)</label>
       <input id="cap" type="number" inputmode="numeric">
       <label for="rp">Risk per trade (% of capital)</label>
@@ -69,12 +78,13 @@ input{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);bac
 <nav><button class="on" data-t="sig">SIGNAL</button><button data-t="jr">JOURNAL</button><button data-t="st">SETTINGS</button></nav>
 </div>
 <script src="engine.js"></script>
+<script src="totp.js"></script>
 <script>
 const E = window.SignalEngine;
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2 }, ld('sb_cfg', {}));
+let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2, aKey: '', aCode: '', aPin: '', aTotp: '' }, ld('sb_cfg', {}));
 let sym = 'NIFTY', last = null;
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
@@ -106,13 +116,41 @@ window.__nativeCb = (id, status, b64) => {
   }
   p.res(j);
 };
-const api = (path) => new Promise((res, rej) => {
+const nfetch = (method, url, headers, body) => new Promise((res, rej) => {
   if (!window.Native) return rej(new Error('Yeh app Android APK ke andar chalani hai.'));
   const id = Math.random().toString(36).slice(2);
   pending[id] = { res, rej };
-  window.Native.request(id, 'https://api.upstox.com' + path, cfg.token);
+  window.Native.fetch(id, method, url, JSON.stringify(headers || {}), body || '');
   setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('Timeout. Net check karo.')); } }, 30000);
 });
+const api = (path) => nfetch('GET', 'https://api.upstox.com' + path,
+  { Accept: 'application/json', Authorization: 'Bearer ' + cfg.token });
+
+/* ---------- Angel One (spot cross-check only) ---------- */
+const ANGEL = 'https://apiconnect.angelone.in';
+const ANGEL_TOKENS = { NIFTY: '99926000', BANKNIFTY: '99926009' };
+let angelJwt = null, angelAt = 0;
+const angelHdr = (jwt) => Object.assign({
+  'Content-Type': 'application/json', Accept: 'application/json', 'X-UserType': 'USER', 'X-SourceID': 'WEB',
+  'X-ClientLocalIP': '192.168.1.10', 'X-ClientPublicIP': '106.193.147.98', 'X-MACAddress': 'fe80::216e:6507:4b90:3719',
+  'X-PrivateKey': cfg.aKey }, jwt ? { Authorization: 'Bearer ' + jwt } : {});
+const angelOn = () => cfg.aKey && cfg.aCode && cfg.aPin && cfg.aTotp;
+async function angelLogin() {
+  if (angelJwt && Date.now() - angelAt < 6 * 3600 * 1000) return angelJwt;
+  const r = await nfetch('POST', ANGEL + '/rest/auth/angelbroking/user/v1/loginByPassword', angelHdr(null),
+    JSON.stringify({ clientcode: cfg.aCode, password: cfg.aPin, totp: window.TOTP.code(cfg.aTotp, Date.now()) }));
+  if (!r || !r.status || !r.data) throw new Error('Angel login fail: ' + ((r && r.message) || 'unknown'));
+  angelJwt = r.data.jwtToken; angelAt = Date.now();
+  return angelJwt;
+}
+async function angelSpot(s) {
+  const jwt = await angelLogin();
+  const r = await nfetch('POST', ANGEL + '/rest/secure/angelbroking/market/v1/quote/', angelHdr(jwt),
+    JSON.stringify({ mode: 'LTP', exchangeTokens: { NSE: [ANGEL_TOKENS[s]] } }));
+  const row = r && r.data && r.data.fetched && r.data.fetched[0];
+  if (!row || !row.ltp) throw new Error('Angel LTP nahi mila');
+  return row.ltp;
+}
 
 const KEYS = { NIFTY: 'NSE_INDEX|Nifty 50', BANKNIFTY: 'NSE_INDEX|Nifty Bank', VIX: 'NSE_INDEX|India VIX' };
 
@@ -171,8 +209,13 @@ async function run(demo) {
   try {
     if (!demo && !cfg.token) throw new Error('Pehle Settings mein Upstox token daalo, ya Demo try karo.');
     const d = demo ? demoData(sym) : await loadLive(sym);
+    if (!demo && angelOn()) {
+      try { d.altSpot = await angelSpot(sym); }
+      catch (e) { d.angelErr = e.message; angelJwt = null; }
+    }
     const maxRiskRs = cfg.capital * cfg.riskPct / 100;
     const r = E.analyze(Object.assign({}, d, { signalsToday: demo ? 0 : ld(cntKey(), 0), maxRiskRs }));
+    if (d.angelErr) r.notes.unshift('Angel cross-check fail hua (' + d.angelErr + '). Sirf Upstox data pe chal raha hai.');
     last = { r, d };
     render(r, d, maxRiskRs);
   } catch (e) {
@@ -261,10 +304,10 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('tok').value = cfg.token; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
-  cfg = { token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
-  sv('sb_cfg', cfg); $('saved').textContent = 'Save ho gaya.';
+  cfg = { aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  sv('sb_cfg', cfg); angelJwt = null; $('saved').textContent = 'Save ho gaya.';
 };
 </script>
 </body>

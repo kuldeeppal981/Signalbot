@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -29,28 +30,39 @@ class MainActivity : Activity() {
     }
 
     inner class Bridge {
-        // Only Upstox API calls are allowed. Token stays on the device.
+        private val allowedHosts = setOf(
+            "api.upstox.com",
+            "apiconnect.angelone.in",
+            "apiconnect.angelbroking.com"
+        )
+
+        // Network calls run natively so there is no CORS. Only broker hosts are allowed.
         @JavascriptInterface
-        fun request(id: String, url: String, token: String) {
+        fun fetch(id: String, method: String, url: String, headersJson: String, body: String) {
             Thread {
                 var status = 0
-                var body = ""
+                var out = ""
                 try {
-                    if (!url.startsWith("https://api.upstox.com/")) throw IllegalArgumentException("blocked host")
-                    val c = URL(url).openConnection() as HttpURLConnection
-                    c.requestMethod = "GET"
+                    val u = URL(url)
+                    if (u.protocol != "https" || u.host !in allowedHosts) throw IllegalArgumentException("blocked host")
+                    val c = u.openConnection() as HttpURLConnection
+                    c.requestMethod = method
                     c.connectTimeout = 15000
                     c.readTimeout = 20000
-                    c.setRequestProperty("Accept", "application/json")
-                    if (token.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer $token")
+                    val h = JSONObject(headersJson)
+                    h.keys().forEach { k -> c.setRequestProperty(k, h.getString(k)) }
+                    if (method == "POST") {
+                        c.doOutput = true
+                        c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                    }
                     status = c.responseCode
                     val stream = if (status in 200..299) c.inputStream else c.errorStream
-                    body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                    out = stream?.bufferedReader()?.use { it.readText() } ?: ""
                 } catch (e: Exception) {
                     status = -1
-                    body = e.message ?: "network error"
+                    out = e.message ?: "network error"
                 }
-                val b64 = Base64.encodeToString(body.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                val b64 = Base64.encodeToString(out.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
                 runOnUiThread {
                     web.evaluateJavascript("window.__nativeCb('$id',$status,'$b64')", null)
                 }
