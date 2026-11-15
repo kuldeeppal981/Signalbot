@@ -58,7 +58,16 @@
       if (above.length) resistance = above.reduce((a, b) => ((b.ceOi || 0) > (a.ceOi || 0) ? b : a)).strike;
       if (below.length) support = below.reduce((a, b) => ((b.peOi || 0) > (a.peOi || 0) ? b : a)).strike;
     }
-    Object.assign(res.snap, { orHigh, orLow, dayHigh, dayLow, pcr, resistance, support, vix });
+    let dte = inp.expiry ? (Date.parse(inp.expiry + 'T15:30:00+05:30') - nowMs) / 86400000 : 7;
+    if (isNaN(dte)) dte = 7;
+    dte = Math.max(0, dte);
+    let atmIv = null;
+    if (chain && chain.length) {
+      const ar = chain.reduce((a, b) => (Math.abs(b.strike - spot) < Math.abs(a.strike - spot) ? b : a));
+      const ivs = [ar.ceIv, ar.peIv].filter((x) => x > 0);
+      if (ivs.length) atmIv = ivs.reduce((a, b) => a + b) / ivs.length;
+    }
+    Object.assign(res.snap, { orHigh, orLow, dayHigh, dayLow, pcr, resistance, support, vix, atmIv, dte });
 
     if (c5.length < 8) return stop('Data kam hai. Kam se kam 40 minute ke closed candles chahiye (9:55 ke baad dekho).');
     const closes5 = c5.map((x) => x.c);
@@ -94,6 +103,7 @@
     if (nm < 570) return stop('9:30 se pehle signal nahi. Opening range abhi ban rahi hai.');
     if (nm > 870) return stop('2:30 PM ke baad naya entry nahi. Theta aur reversal ka risk.');
     if (signalsToday >= 2) return stop('Aaj ke 2 signals ho chuke. Quality over quantity, ab kal.');
+    if (inp.lastLossAgoMin != null && inp.lastLossAgoMin < 15) return stop('Pichle loss ko 15 minute nahi hue. Cooldown, revenge trade se bacho.');
     if ((inp.consecLosses || 0) >= 2) return stop('Aaj lagataar 2 loss hue. Overtrading se bacho, aaj ke liye bas.');
     if (maxRiskRs > 0 && (inp.dayPnl || 0) <= -2 * maxRiskRs) return stop('Aaj ka loss limit (2x risk) hit ho gaya. Ab trade band.');
     if (inp.expiry && inp.expiry === E.istDate(nowMs) && nm >= 810) return stop('Expiry day 1:30 PM ke baad fresh buy nahi. Theta bahut tez hai.');
@@ -117,6 +127,18 @@
       return stop((dir > 0 ? 'Resistance ' : 'Support ') + roomLevel + ' bahut paas hai. Target ke liye jagah nahi.');
     }
 
+    if (dte < 1) {
+      const pin = chain.reduce((a, b) => ((b.ceOi || 0) + (b.peOi || 0) > (a.ceOi || 0) + (a.peOi || 0) ? b : a));
+      if (Math.abs(pin.strike - spot) / spot < 0.0008) {
+        return stop('Expiry par spot ' + pin.strike + ' ke paas (sabse zyada OI). Pin risk, price wahin atak sakta hai.');
+      }
+    }
+    const ivh = (inp.ivHistory || []).filter((x) => x > 0);
+    if (atmIv != null && ivh.length >= 10) {
+      const pct = Math.round((ivh.filter((x) => x < atmIv).length / ivh.length) * 100);
+      res.snap.ivPct = pct;
+      if (pct >= 90) return stop('ATM IV apne recent history ke ' + pct + ' percentile par hai. Premium mehenga, IV girne par loss ho sakta hai.');
+    }
     // Strike selection: ATM, or 1 strike OTM if ATM risk is above capital limit.
     const strikes = chain.map((r) => r.strike).sort((a, b) => a - b);
     let ai = 0;
@@ -128,16 +150,21 @@
       const ltp = dir > 0 ? r.ceLtp : r.peLtp;
       const key = dir > 0 ? r.ceKey : r.peKey;
       if (!ltp || ltp <= 0) return null;
+      const delta = dir > 0 ? r.ceDelta : r.peDelta;
+      const bid = dir > 0 ? r.ceBid : r.peBid, ask = dir > 0 ? r.ceAsk : r.peAsk;
+      const spreadPct = ask > 0 && bid > 0 ? ((ask - bid) / ask) * 100 : null;
+      if (delta != null && Math.abs(delta) < (dte <= 1 ? 0.45 : 0.4)) return null; // buyers need real delta
+      if (spreadPct != null && spreadPct > 5) return null; // wide spread eats the SL
       const riskPerLot = 0.25 * ltp * lotSize;
       const lots = maxRiskRs > 0 ? Math.floor(maxRiskRs / riskPerLot) : 0;
-      return { option: dir > 0 ? 'CE' : 'PE', strike, strikeType: type, key, ltp, riskPerLot, lots };
+      return { option: dir > 0 ? 'CE' : 'PE', strike, strikeType: type, key, ltp, riskPerLot, lots, delta: delta == null ? null : Math.abs(delta), spreadPct };
     };
     const atm = build(strikes[ai], 'ATM');
     const otmStrike = dir > 0 ? strikes[ai + 1] : strikes[ai - 1];
     const otm = otmStrike != null ? build(otmStrike, '1 Strike OTM') : null;
     let pick = atm;
     if ((!atm || atm.lots === 0) && otm && otm.lots > 0) pick = otm;
-    if (!pick) return stop('Option premium data nahi mila.');
+    if (!pick) return stop('Strike filter pass nahi hua (delta kam, spread chauda, ya premium data nahi).');
 
     const p = pick.ltp;
     const last3 = c5.slice(-3);

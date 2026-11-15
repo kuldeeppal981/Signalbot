@@ -175,8 +175,14 @@ async function loadLive(s) {
     strike: r.strike_price,
     ceKey: r.call_options && r.call_options.instrument_key, ceLtp: r.call_options && r.call_options.market_data.ltp,
     ceOi: r.call_options && r.call_options.market_data.oi,
+    ceDelta: r.call_options && r.call_options.option_greeks ? r.call_options.option_greeks.delta : null,
+    ceIv: r.call_options && r.call_options.option_greeks ? r.call_options.option_greeks.iv : null,
+    ceBid: r.call_options && r.call_options.market_data.bid_price, ceAsk: r.call_options && r.call_options.market_data.ask_price,
     peKey: r.put_options && r.put_options.instrument_key, peLtp: r.put_options && r.put_options.market_data.ltp,
     peOi: r.put_options && r.put_options.market_data.oi,
+    peDelta: r.put_options && r.put_options.option_greeks ? r.put_options.option_greeks.delta : null,
+    peIv: r.put_options && r.put_options.option_greeks ? r.put_options.option_greeks.iv : null,
+    peBid: r.put_options && r.put_options.market_data.bid_price, peAsk: r.put_options && r.put_options.market_data.ask_price,
   }));
   return { symbol: s, spot, vix, chain, lotSize: lotSize || (s === 'NIFTY' ? 65 : 30), expiry: exps[0],
     candles: E.parseCandles((cd.data && cd.data.candles) || []), nowMs: Date.now() };
@@ -218,7 +224,12 @@ async function run(demo) {
     let consecLosses = 0;
     for (let i = tj.length - 1; i >= 0 && (tj[i].exit - tj[i].entry) < 0; i--) consecLosses++;
     const dayPnl = tj.reduce((t, x) => t + (x.exit - x.entry) * x.lots * x.lotSize, 0);
-    const r = E.analyze(Object.assign({}, d, { signalsToday: demo ? 0 : ld(cntKey(), 0), maxRiskRs, consecLosses, dayPnl }));
+    const lastT = tj[tj.length - 1];
+    const lastLossAgoMin = lastT && lastT.closedAt && (lastT.exit - lastT.entry) < 0 ? (Date.now() - lastT.closedAt) / 60000 : null;
+    const ivKey = 'sb_iv_' + sym, ivStore = demo ? [] : ld(ivKey, []);
+    const r = E.analyze(Object.assign({}, d, { signalsToday: demo ? 0 : ld(cntKey(), 0), maxRiskRs, consecLosses, dayPnl, lastLossAgoMin,
+      ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
+    if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
     if (d.angelErr) r.notes.unshift('Angel cross-check fail hua (' + d.angelErr + '). Sirf Upstox data pe chal raha hai.');
     last = { r, d };
     render(r, d, maxRiskRs);
@@ -250,6 +261,7 @@ function render(r, d, maxRiskRs) {
       '<span>1 lot cost</span><span>' + inr(s.lotCost) + '</span>' +
       '<span>Risk per lot (SL)</span><span>' + inr(s.riskPerLot) + '</span>' +
       '<span>Lots (risk limit ' + inr(maxRiskRs) + ')</span><span>' + s.lots + '</span>' +
+      (s.delta != null ? '<span>Delta</span><span>' + f2(s.delta) + '</span>' : '') +
       '<span>Validity</span><span>' + s.validUntil + ' tak</span></div></div>';
   }
   if (!r.noTrade) {
@@ -287,6 +299,10 @@ function renderJournal() {
   let h = '<h1>Journal</h1><div class="card"><div class="kv"><span>Closed trades</span><span>' + done.length + '</span>' +
     '<span>Win rate</span><span>' + (done.length ? Math.round(wins * 100 / done.length) + '%' : '-') + '</span>' +
     '<span>Total P&amp;L</span><span class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + inr(tot) + '</span></div></div>';
+  const rec = done.slice(0, 20);
+  if (rec.length >= 20 && rec.filter((x) => pl(x) > 0).length / rec.length < 0.4) {
+    h += '<div class="card"><span class="badge b-dn">REVIEW</span><p class="note">Pichle 20 trades mein win rate 40% se kam hai. Naye trade rok kar journal review karo (chat mein paste karo).</p></div>';
+  }
   if (!j.length) h += '<p class="note">Abhi koi trade nahi. Signal ke baad "Trade liya" dabao.</p>';
   j.forEach((x) => {
     h += '<div class="card"><div class="j"><b>' + x.idx + ' ' + x.strike + ' ' + x.opt + '</b><span class="note">' + x.date + '</span></div>' +
@@ -303,7 +319,7 @@ function renderJournal() {
     const v = parseFloat($('ex' + b.dataset.id).value);
     if (isNaN(v)) return;
     const arr = ld('sb_journal', []); const it = arr.find((a) => String(a.id) === b.dataset.id);
-    if (it) { it.exit = v; sv('sb_journal', arr); renderJournal(); }
+    if (it) { it.exit = v; it.closedAt = Date.now(); sv('sb_journal', arr); renderJournal(); }
   });
 }
 
