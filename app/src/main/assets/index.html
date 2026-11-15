@@ -34,7 +34,7 @@ h1{font-size:18px;margin:0 0 12px}
 .note{color:var(--mut);font-size:13px;margin:4px 0}
 .warn{color:var(--warn);font-size:12px;margin-top:14px}
 label{display:block;color:var(--mut);font-size:13px;margin:12px 0 5px}
-input{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font:15px system-ui}
+input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font:15px system-ui}
 .j{display:flex;justify-content:space-between;gap:10px;align-items:center}
 .pos{color:var(--up)}.neg{color:var(--dn)}
 .hide{display:none}
@@ -55,6 +55,10 @@ input{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);bac
       <button class="btn ghost" id="batt">Battery restriction hatao (zaroori)</button>
     </div>
     <div id="out" style="margin-top:14px"></div>
+    <div class="card"><b>Expiry Zero-Hero</b> <span class="badge b-dn">HIGH RISK</span>
+      <p class="note">Sirf expiry din, 1:00-2:45 PM. Sasta far-OTM option, jo aksar zero hota hai. Din mein max 1.</p>
+      <button class="btn ghost" id="zh">Zero-Hero check karo</button>
+      <div id="zhout"></div></div>
   </section>
   <section id="t-jr" class="hide"></section>
   <section id="t-st" class="hide">
@@ -72,6 +76,10 @@ input{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);bac
       <label for="atotp">Angel One TOTP secret</label>
       <input id="atotp" type="password" autocomplete="off">
       <p class="note">Yeh sab sirf is phone mein save hote hain. Angel ka login sensitive hai, isliye phone lock rakho. Khaali chhodo to Angel use nahi hoga.</p>
+      <label for="zhon">Expiry Zero-Hero alerts (high risk)</label>
+      <select id="zhon"><option value="0">Band</option><option value="1">Chalu</option></select>
+      <label for="zhb">Zero-Hero budget per trade (Rs). 0 = capital ka 2%</label>
+      <input id="zhb" type="number" inputmode="numeric">
       <label for="cap">Capital (Rs)</label>
       <input id="cap" type="number" inputmode="numeric">
       <label for="rp">Risk per trade (% of capital)</label>
@@ -90,7 +98,7 @@ const E = window.SignalEngine;
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2, aKey: '', aCode: '', aPin: '', aTotp: '' }, ld('sb_cfg', {}));
+let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0 }, ld('sb_cfg', {}));
 let sym = 'NIFTY', last = null;
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
@@ -253,6 +261,35 @@ async function run(demo) {
 $('go').onclick = () => run(false);
 $('demo').onclick = () => run(true);
 
+/* ---------- zero-hero ---------- */
+const zhBudget = () => (cfg.zhBudget > 0 ? cfg.zhBudget : cfg.capital * 0.02);
+const zhKey = () => 'sb_zh_' + today();
+function zhEval(d) { return E.zeroHero(Object.assign({}, d, { budget: zhBudget(), doneToday: ld(zhKey(), 0) })); }
+function renderZH(z, d) {
+  if (z.noTrade) return '<p class="note" style="margin-top:8px">No Trade: ' + z.reason + '</p>';
+  const s = z.signal;
+  return '<div class="kv" style="margin-top:10px"><span>Option</span><span>' + s.indexName + ' ' + s.strike + ' ' + s.option + ' (' + s.steps + ' strike OTM)</span>' +
+    '<span>Entry zone</span><span>' + f2(s.entryLo) + ' - ' + f2(s.entryHi) + '</span>' +
+    '<span>Stop Loss (50%)</span><span class="neg">' + f2(s.sl) + '</span>' +
+    '<span>Target 1 (2x)</span><span class="pos">' + f2(s.t1) + '</span>' +
+    '<span>Target 2 (4x)</span><span class="pos">' + f2(s.t2) + '</span>' +
+    '<span>Lots</span><span>' + s.lots + '</span>' +
+    '<span>Max loss (puri premium)</span><span class="neg">' + inr(s.maxLoss) + '</span>' +
+    '<span>Validity</span><span>' + s.validUntil + ' tak</span></div>' +
+    '<p class="note">T1 pe aadha nikalo, baaki ka SL entry pe. 3:15 se pehle sab nikal do. Average mat karo.</p>' +
+    '<button class="btn ghost" id="zhtook">Zero-Hero trade liya (aaj ke liye ho gaya)</button>';
+}
+$('zh').onclick = async () => {
+  const out = $('zhout'); $('zh').disabled = true; out.innerHTML = '<p class="note">Data la raha hoon...</p>';
+  try {
+    const x = await compute(sym, false);
+    const z = zhEval(x.d);
+    out.innerHTML = renderZH(z, x.d);
+    const t = $('zhtook'); if (t) t.onclick = () => { sv(zhKey(), ld(zhKey(), 0) + 1); t.disabled = true; t.textContent = 'Note ho gaya'; };
+  } catch (e) { out.innerHTML = '<p class="note">Error: ' + e.message + '</p>'; }
+  $('zh').disabled = false;
+};
+
 /* ---------- auto-scan + notifications ---------- */
 const hasNative = () => !!window.Native;
 let autoTimer = null, scanning = false, svcOn = false, autoMsg = '';
@@ -273,13 +310,22 @@ async function autoTick() {
   const now = Date.now(), nm = E.istMin(now), dow = new Date(now + 19800000).getUTCDay();
   if (dow === 0 || dow === 6) { autoMsg = 'Weekend, market band. ' + hm(); return setAutoUi(); }
   if (nm > 930) { stopService(); autoMsg = 'Market band. Kal subah app kholo, auto-scan apne aap chalu ho jayega.'; return setAutoUi(); }
-  if (nm < 570 || nm > 870) { autoMsg = (nm < 570 ? '9:30 ka wait.' : '2:30 ke baad naya entry nahi.') + ' ' + hm(); return setAutoUi(); }
+  if (nm < 570 || nm > (cfg.zhOn ? 885 : 870)) { autoMsg = (nm < 570 ? '9:30 ka wait.' : '2:30 ke baad naya entry nahi.') + ' ' + hm(); return setAutoUi(); }
   scanning = true;
   const lines = [];
   try {
     for (const s of ['NIFTY', 'BANKNIFTY']) {
       try {
         const x = await compute(s, false);
+        if (cfg.zhOn) {
+          const z = zhEval(x.d), zk = 'sb_zhn_' + today();
+          if (!z.noTrade && !ld(zk, false)) {
+            sv(zk, true);
+            const g = z.signal;
+            if (hasNative()) window.Native.notify('ZERO-HERO (HIGH RISK): ' + g.indexName + ' ' + g.option,
+              g.strike + ' ' + g.option + ' | Entry ' + f2(g.entryLo) + '-' + f2(g.entryHi) + ' | SL ' + f2(g.sl) + ' | T1 ' + f2(g.t1) + ' | ' + g.lots + ' lot | Max loss ' + inr(g.maxLoss));
+          }
+        }
         if (x.r.noTrade) { lines.push((s === 'NIFTY' ? 'Nifty' : 'BankNifty') + ': No Trade'); continue; }
         const sg = x.r.signal, key = s + sg.option + sg.strike, done = ld(notifKey(), []);
         lines.push((s === 'NIFTY' ? 'Nifty' : 'BankNifty') + ': SIGNAL ' + sg.strike + ' ' + sg.option);
@@ -403,9 +449,9 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
-  cfg = { aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; $('saved').textContent = 'Save ho gaya.';
 };
 </script>

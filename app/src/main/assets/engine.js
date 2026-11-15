@@ -188,6 +188,54 @@
     return res;
   };
 
+  // Expiry-day "zero to hero": cheap far-OTM lottery. High risk, separate from normal signals.
+  E.zeroHero = function (inp) {
+    const { spot, candles, chain, lotSize, nowMs, expiry } = inp;
+    const budget = inp.budget || 0, doneToday = inp.doneToday || 0;
+    const res = { noTrade: true, reason: '', signal: null };
+    const stop = (w) => { res.reason = w; return res; };
+    if (!expiry || expiry !== E.istDate(nowMs)) return stop('Aaj expiry nahi hai. Zero-Hero sirf expiry din ke liye.');
+    const nm = E.istMin(nowMs);
+    if (nm < 780 || nm > 885) return stop('Zero-Hero window 1:00 se 2:45 PM hai. Abhi bahar hai.');
+    if (doneToday >= 1) return stop('Aaj ka 1 Zero-Hero trade ho chuka. Din mein sirf ek.');
+    if (!candles || !candles.length || !chain || !chain.length) return stop('Data nahi mila.');
+    const c5 = E.aggregate(candles, 5, nowMs);
+    if (c5.length < 20) return stop('Data kam hai.');
+    const closes = c5.map((x) => x.c), n = closes.length;
+    const e9 = E.ema(closes, 9), e20 = E.ema(closes, 20);
+    const ema9 = e9[n - 1], ema20 = e20[n - 1];
+    const dayHigh = Math.max(...candles.map((x) => x.h)), dayLow = Math.min(...candles.map((x) => x.l));
+    const move = (closes[n - 1] - closes[n - 4]) / spot;
+    let dir = 0;
+    if (spot > ema20 && ema9 > ema20 && spot >= dayHigh * (1 - 0.0007) && move >= 0.002) dir = 1;
+    else if (spot < ema20 && ema9 < ema20 && spot <= dayLow * (1 + 0.0007) && move <= -0.002) dir = -1;
+    if (!dir) return stop('Din ke high/low par tez momentum nahi hai. Lottery ke liye breakout chahiye, abhi nahi.');
+    const strikes = chain.map((r) => r.strike).sort((a, b) => a - b);
+    let ai = 0;
+    strikes.forEach((k, i) => { if (Math.abs(k - spot) < Math.abs(strikes[ai] - spot)) ai = i; });
+    let best = null;
+    for (let k = 2; k <= 7; k++) {
+      const st = strikes[ai + dir * k];
+      const row = st == null ? null : chain.find((r) => r.strike === st);
+      if (!row) continue;
+      const ltp = dir > 0 ? row.ceLtp : row.peLtp, delta = dir > 0 ? row.ceDelta : row.peDelta;
+      if (!ltp || ltp < 4 || ltp > 25) continue;
+      if (delta != null && (Math.abs(delta) < 0.03 || Math.abs(delta) > 0.30)) continue;
+      if (!best || Math.abs(ltp - 10) < Math.abs(best.ltp - 10)) best = { strike: st, ltp, key: dir > 0 ? row.ceKey : row.peKey, steps: k };
+    }
+    if (!best) return stop('Sahi lottery strike nahi mila (premium Rs 4 se 25 ke beech).');
+    const costLot = best.ltp * lotSize, lots = Math.floor(budget / costLot);
+    if (lots < 1) return stop('Budget Rs ' + Math.round(budget) + ' mein 1 lot (Rs ' + Math.round(costLot) + ') nahi aata. Budget badhao ya skip karo.');
+    res.noTrade = false;
+    res.reason = 'Expiry momentum breakout.';
+    res.signal = Object.assign(best, {
+      option: dir > 0 ? 'CE' : 'PE', indexName: inp.symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty',
+      entryLo: r05(best.ltp), entryHi: r05(best.ltp * 1.1), sl: r05(best.ltp * 0.5), t1: r05(best.ltp * 2), t2: r05(best.ltp * 4),
+      lots, lotSize, maxLoss: lots * costLot, validUntil: E.hhmm(Math.min(nm + 15, 900)), expiry,
+    });
+    return res;
+  };
+
   root.SignalEngine = E;
   if (typeof module !== 'undefined') module.exports = E;
 })(typeof window !== 'undefined' ? window : globalThis);
