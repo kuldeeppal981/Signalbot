@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SignalBot</title>
 <style>
-:root{--bg:#0E1116;--surf:#161B22;--line:#262D36;--tx:#E6EDF3;--mut:#8B949E;--up:#3DDC97;--dn:#FF6B6B;--warn:#F2B84B;--acc:#58A6FF;color-scheme:dark}
+:root{--bg:#F6F8FA;--surf:#FFFFFF;--line:#D0D7DE;--tx:#1F2328;--mut:#656D76;--up:#1A7F37;--dn:#CF222E;--warn:#9A6700;--acc:#0969DA;color-scheme:light}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,Roboto,sans-serif}
 #app{display:flex;flex-direction:column;height:100%}
@@ -18,12 +18,12 @@ h1{font-size:18px;margin:0 0 12px}
 .row{display:flex;gap:8px}
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:1}
 .seg button{flex:1;padding:10px;border:0;background:none;color:var(--mut);font:600 14px system-ui}
-.seg button.on{background:var(--acc);color:#04111f}
-.btn{width:100%;padding:13px;border-radius:10px;border:0;background:var(--acc);color:#04111f;font:700 15px system-ui;margin-top:10px}
+.seg button.on{background:var(--acc);color:#fff}
+.btn{width:100%;padding:13px;border-radius:10px;border:0;background:var(--acc);color:#fff;font:700 15px system-ui;margin-top:10px}
 .btn.ghost{background:none;border:1px solid var(--line);color:var(--tx);margin-top:8px}
 .btn:disabled{opacity:.5}
 .badge{display:inline-block;padding:4px 10px;border-radius:99px;font:700 12px system-ui;letter-spacing:.5px}
-.b-up{background:#12392b;color:var(--up)}.b-dn{background:#3b1c1f;color:var(--dn)}.b-no{background:#3a2f12;color:var(--warn)}
+.b-up{background:#DAFBE1;color:var(--up)}.b-dn{background:#FFEBE9;color:var(--dn)}.b-no{background:#FFF8C5;color:var(--warn)}
 .kv{display:grid;grid-template-columns:1fr auto;gap:7px 12px;font-variant-numeric:tabular-nums}
 .kv span:nth-child(odd){color:var(--mut)}.kv span:nth-child(even){text-align:right;font-weight:600}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;background:var(--mut)}
@@ -39,8 +39,8 @@ input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--li
 .pos{color:var(--up)}.neg{color:var(--dn)}
 .hide{display:none}
 .chip{display:inline-block;padding:5px 10px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:99px;color:var(--mut);font-size:12px;background:none}
-.chip.on{background:#3b1c1f;color:var(--dn);border-color:var(--dn)}
-.chip.good.on{background:#12392b;color:var(--up);border-color:var(--up)}
+.chip.on{background:#FFEBE9;color:var(--dn);border-color:var(--dn)}
+.chip.good.on{background:#DAFBE1;color:var(--up);border-color:var(--up)}
 details summary{cursor:pointer;font-weight:700}
 #chcv{width:100%;height:320px;display:block;touch-action:pan-y}
 </style>
@@ -71,7 +71,7 @@ details summary{cursor:pointer;font-weight:700}
     <p class="note" id="chst" style="margin-top:10px"></p>
     <div class="card" style="padding:8px 6px 6px"><canvas id="chcv"></canvas>
       <p class="note" style="margin:6px 8px 2px" id="chinfo">Tap a candle to see its OHLC.</p>
-      <p class="note" style="margin:2px 8px 4px"><span style="color:#58A6FF">&#9632;</span> EMA9 &nbsp;<span style="color:#F2B84B">&#9632;</span> EMA20 &nbsp;<span style="color:#6e7681">- - -</span> Opening range &nbsp;<span style="color:#3DDC97">&#9650;</span> CE signal &nbsp;<span style="color:#FF6B6B">&#9660;</span> PE signal &nbsp;<span style="color:#58A6FF">&#9679;</span> paper fill</p></div>
+      <p class="note" style="margin:2px 8px 4px"><span style="color:#0969DA">&#9632;</span> EMA9 &nbsp;<span style="color:#BF8700">&#9632;</span> EMA20 &nbsp;<span style="color:#6e7681">- - -</span> Opening range &nbsp;<span style="color:#1A7F37">&#9650;</span> CE signal &nbsp;<span style="color:#CF222E">&#9660;</span> PE signal &nbsp;<span style="color:#0969DA">&#9679;</span> paper fill</p></div>
     <button class="btn ghost" id="chref" style="margin-top:0">Refresh now</button>
     <p class="note" id="chscan"></p>
     <div id="chsigs"></div>
@@ -91,6 +91,7 @@ details summary{cursor:pointer;font-weight:700}
       <input id="btprem" type="number" inputmode="decimal" step="0.05" value="0.45">
       <button class="btn" id="btgo">Run backtest (Upstox data)</button>
       <button class="btn" id="btab">A/B test: do the filters help? (Upstox data)</button>
+      <button class="btn" id="btfac">Factor test: which factors matter? (Upstox data)</button>
       <button class="btn ghost" id="btrw">Sanity test (random data, no edge)</button>
       <button class="btn ghost" id="btabrw">A/B sanity (random data)</button>
       <p class="note" id="btstat"></p>
@@ -115,12 +116,14 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note">All of this is saved only on this phone. Angel login details are sensitive, so keep your phone locked. Leave blank to skip Angel.</p>
       <label for="zhon">Expiry Zero-Hero alerts (high risk)</label>
       <select id="zhon"><option value="0">Off</option><option value="1">On</option></select>
-      <label for="zhb">Zero-Hero budget per trade (Rs). 0 = 2% of capital</label>
+      <label for="zhb">Zero-Hero budget per trade (Rs). 0 = 1% of capital</label>
       <input id="zhb" type="number" inputmode="numeric">
       <label for="flc">Filter: breakout candle-close confirmation</label>
       <select id="flc"><option value="0">Off</option><option value="1">On</option></select>
       <label for="flr">Filter: sideways/choppy market block</label>
       <select id="flr"><option value="0">Off</option><option value="1">On</option></select>
+      <label for="flt">Filter: retest of the opening-range level</label>
+      <select id="flt"><option value="0">Off</option><option value="1">On</option></select>
       <p class="note">Check both with the A/B test in the Backtest tab first, and turn them on only if they help.</p>
       <label for="ppon">Paper trading (virtual trade as soon as a signal appears)</label>
       <select id="ppon"><option value="1">On</option><option value="0">Off</option></select>
@@ -131,7 +134,7 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note">Charges are estimates (STT, exchange, GST, stamp). Match them with your broker's charge calculator.</p>
       <label for="cap">Capital (Rs)</label>
       <input id="cap" type="number" inputmode="numeric">
-      <label for="rp">Risk per trade (% of capital)</label>
+      <label for="rp">Risk per trade (% of capital). 0.5-1% recommended while validating</label>
       <input id="rp" type="number" inputmode="decimal" step="0.1">
       <button class="btn" id="save">Save</button>
       <p class="note" id="saved"></p>
@@ -152,7 +155,7 @@ const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = w
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-let cfg = Object.assign({ token: '', capital: 20000, riskPct: 2, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false }, ld('sb_cfg', {}));
+let cfg = Object.assign({ token: '', capital: 20000, riskPct: 1, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false, flRetest: false }, ld('sb_cfg', {}));
 let sym = 'NIFTY', last = null, curTab = 'sig';
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
@@ -230,14 +233,23 @@ const KEYS = { NIFTY: 'NSE_INDEX|Nifty 50', BANKNIFTY: 'NSE_INDEX|Nifty Bank', V
 // Same paths + TTLs are used by scan and chart, so one network call serves both.
 const qPath = (s) => '/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(KEYS[s] + ',' + KEYS.VIX);
 const cPath = (s) => '/v2/historical-candle/intraday/' + encodeURIComponent(KEYS[s]) + '/1minute';
-const TTL = { quote: 15000, candle: 20000, contract: 3600000, chain: 30000, optQuote: 10000 };
+const TTL = { quote: 15000, candle: 20000, contract: 3600000, chain: 30000, optQuote: 10000, hist: 6 * 3600000 };
+// Earlier sessions (1-min) used only to warm up the EMAs. One call per index per day, cached.
+async function loadPrev(s, opt) {
+  const td = today(), D = 86400000, base = Date.parse(td + 'T00:00:00+05:30');
+  const path = '/v2/historical-candle/' + encodeURIComponent(KEYS[s]) + '/1minute/' + E.istDate(base - D) + '/' + E.istDate(base - 9 * D);
+  const j = await api(path, Object.assign({ ttl: TTL.hist }, opt));
+  return E.parseCandles((j.data && j.data.candles) || []).filter((c) => E.istDate(c.t) < td);
+}
 
 async function loadLive(s) {
   const key = KEYS[s], ek = encodeURIComponent(key);
-  const [q, cd, ct] = await Promise.all([
+  let warmErr = null;
+  const [q, cd, ct, prevCandles] = await Promise.all([
     api(qPath(s), { ttl: TTL.quote }),
     api(cPath(s), { ttl: TTL.candle }),
     api('/v2/option/contract?instrument_key=' + ek, { ttl: TTL.contract }),
+    loadPrev(s).catch((e) => { warmErr = e.message; return []; }),
   ]);
   const quotes = Object.entries(q.data || {});
   const find = (name) => { const e = quotes.find(([k]) => k.toLowerCase().includes(name)); return e ? e[1].last_price : null; };
@@ -263,7 +275,7 @@ async function loadLive(s) {
     peBid: r.put_options && r.put_options.market_data.bid_price, peAsk: r.put_options && r.put_options.market_data.ask_price,
   }));
   return { symbol: s, spot, vix, chain, chainSpot: ((ch.data || [])[0] || {}).underlying_spot_price, lotSize: lotSize || (s === 'NIFTY' ? 65 : 30), expiry: exps[0],
-    candles: E.parseCandles((cd.data && cd.data.candles) || []), nowMs: Date.now() };
+    candles: E.parseCandles((cd.data && cd.data.candles) || []), nowMs: Date.now(), prevCandles, warmErr };
 }
 
 /* ---------- demo data (synthetic, for UI testing only) ---------- */
@@ -306,7 +318,7 @@ function logSignal(sg, s, spot) {
   try {
     const cut = E.istDate(Date.now() - 14 * 86400000);
     for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i), m = /^sb_(dlog|sigs|cnt|notified|err|zh|zhn)_(\d{4}-\d{2}-\d{2})$/.exec(k || '');
+      const k = localStorage.key(i), m = /^sb_(dlog|sigs|cnt|notified|err|zh|zhn|zhrisk)_(\d{4}-\d{2}-\d{2})$/.exec(k || '');
       if (m && m[2] < cut) localStorage.removeItem(k);
     }
   } catch (e) {}
@@ -351,7 +363,7 @@ function riskState(s) {
   ld(notifKey(), []).forEach((q) => { if (q.sym === s && q.tMs) recent.push({ dir: q.dir, t: q.tMs }); });
   paperList().filter((x) => x.date === today() && x.sym === s).forEach((x) => recent.push({ dir: x.dir, t: x.createdAt }));
   return {
-    consecLosses: consec, dayPnl: cl.reduce((a, b) => a + b.pnl, 0),
+    consecLosses: consec, dayPnl: cl.reduce((a, b) => a + b.pnl, 0) - ld(zhRiskKey(), 0),
     lastLossAgoMin: last && last.pnl < 0 ? (Date.now() - last.t) / 60000 : null,
     openForSymbol: paperList().some((t) => t.sym === s && PP.ACTIVE.includes(t.state)) || ld('sb_journal', []).some((x) => x.date === today() && x.idx === nm && x.exit == null),
     recentSignals: recent,
@@ -414,8 +426,9 @@ async function compute(s, demo) {
   const rk = demo ? { consecLosses: 0, dayPnl: 0, lastLossAgoMin: null, openForSymbol: false, recentSignals: [] } : riskState(s);
   const ivKey = 'sb_iv_' + s, ivStore = demo ? [] : ld(ivKey, []);
   const signalsToday = demo ? 0 : Math.max(ld(cntKey(), 0), ld(notifKey(), []).length);
-  const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
+  const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
+  if (!demo && (d.warmErr || !(d.prevCandles && d.prevCandles.length))) r.notes.unshift('EMA warm-up history unavailable' + (d.warmErr ? ' (' + d.warmErr + ')' : '') + ': EMAs use today\'s candles only, so early-session signals are less reliable.');
   if (d.angelErr) r.notes.unshift('Angel cross-check failed (' + d.angelErr + '). Running on Upstox data only.');
   return { r, d, maxRiskRs };
 }
@@ -437,8 +450,9 @@ $('go').onclick = () => run(false);
 $('demo').onclick = () => run(true);
 
 /* ---------- zero-hero ---------- */
-const zhBudget = () => (cfg.zhBudget > 0 ? cfg.zhBudget : cfg.capital * 0.02);
+const zhBudget = () => (cfg.zhBudget > 0 ? cfg.zhBudget : cfg.capital * 0.01);
 const zhKey = () => 'sb_zh_' + today();
+const zhRiskKey = () => 'sb_zhrisk_' + today(); // worst-case loss of Zero-Hero trades taken today, counted in the daily loss limit
 function zhEval(d) { return E.zeroHero(Object.assign({}, d, { budget: zhBudget(), doneToday: ld(zhKey(), 0) })); }
 function renderZH(z, d) {
   if (z.noTrade) return '<p class="note" style="margin-top:8px">No Trade: ' + z.reason + '</p>';
@@ -451,7 +465,7 @@ function renderZH(z, d) {
     '<span>Lots</span><span>' + s.lots + '</span>' +
     '<span>Max loss (full premium)</span><span class="neg">' + inr(s.maxLoss) + '</span>' +
     '<span>Valid until</span><span>' + s.validUntil + '</span></div>' +
-    '<p class="note">Sell half at T1 and move the SL to entry for the rest. Exit everything before 3:15. Do not average down.</p>' +
+    '<p class="note">' + (s.lots >= 2 ? 'Sell half of the lots at T1 and move the SL to entry for the rest.' : 'With 1 lot, exit the whole lot at T1.') + ' Exit everything before 3:15. Do not average down.</p>' +
     '<button class="btn ghost" id="zhtook">I took the Zero-Hero trade (done for today)</button>';
 }
 $('zh').onclick = async () => {
@@ -460,7 +474,7 @@ $('zh').onclick = async () => {
     const x = await compute(sym, false);
     const z = zhEval(x.d);
     out.innerHTML = renderZH(z, x.d);
-    const t = $('zhtook'); if (t) t.onclick = () => { sv(zhKey(), ld(zhKey(), 0) + 1); t.disabled = true; t.textContent = 'Noted'; };
+    const t = $('zhtook'); if (t) t.onclick = () => { sv(zhKey(), ld(zhKey(), 0) + 1); sv(zhRiskKey(), ld(zhRiskKey(), 0) + (z.signal ? z.signal.maxLoss : 0)); t.disabled = true; t.textContent = 'Noted'; };
   } catch (e) { out.innerHTML = '<p class="note">Error: ' + e.message + '</p>'; }
   $('zh').disabled = false;
 };
@@ -589,6 +603,7 @@ function render(r, d, maxRiskRs) {
   h += '<div class="card"><b>Levels</b><div class="kv" style="margin-top:8px">' +
     '<span>Opening range</span><span>' + f2(sn.orLow) + ' - ' + f2(sn.orHigh) + '</span>' +
     '<span>5m EMA9 / EMA20</span><span>' + f2(sn.ema9) + ' / ' + f2(sn.ema20) + '</span>' +
+    '<span>EMA warm-up</span><span>' + (sn.warm ? sn.warm.c5 + ' x 5m + ' + sn.warm.c15 + ' x 15m earlier' : 'today only') + '</span>' +
     '<span>Day low / high</span><span>' + f2(sn.dayLow) + ' / ' + f2(sn.dayHigh) + '</span>' +
     '<span>Support (max Put OI)</span><span>' + (sn.support || '-') + '</span>' +
     '<span>Resistance (max Call OI)</span><span>' + (sn.resistance || '-') + '</span>' +
@@ -623,7 +638,7 @@ const chartPaper = () => paperList().filter((t) => t.date === today() && t.sym =
 function chartRedraw() {
   const cv = $('chcv');
   if (!cv || !chData || curTab !== 'ch') return;
-  chModel = LC.model(chData.candles, Date.now(), chartSigs(), chartPaper(), chData.ltp);
+  chModel = LC.model(chData.candles, Date.now(), chartSigs(), chartPaper(), chData.ltp, chData.prevAgg);
   chLay = LC.draw(cv, chModel, { w: cv.clientWidth || 340, h: 320, dpr: window.devicePixelRatio || 1 });
 }
 function chartStatus() {
@@ -638,16 +653,17 @@ async function chartLoad(manual) {
   chLoading = true;
   const s = chSym, pr = manual ? undefined : 'low';
   try {
-    const [cd, q] = await Promise.all([
+    const [cd, q, prev] = await Promise.all([
       api(cPath(s), { ttl: TTL.candle, prio: pr, staleOk: true }),
       api(qPath(s), { ttl: TTL.quote, prio: pr, staleOk: true }),
+      loadPrev(s, { prio: pr, staleOk: true }).catch(() => []),
     ]);
     if (s !== chSym) return;
     const e = Object.entries(q.data || {}).find(([k]) => k.toLowerCase().includes(s === 'NIFTY' ? 'nifty 50' : 'nifty bank'));
     const ltp = e ? e[1].last_price : null;
     if (ltp) lastSpot[s] = ltp;
     const candles = E.parseCandles((cd.data && cd.data.candles) || []);
-    chData = { candles, ltp, at: Date.now() };
+    chData = { candles, ltp, at: Date.now(), prevAgg: prev && prev.length ? E.prevAgg(prev) : null };
     if (!candles.length) st.textContent = 'No intraday candles yet (market closed or holiday).';
     else chartStatus();
     chartRedraw();
@@ -723,7 +739,7 @@ function spark(eq) {
   const w = 300, h = 70, mn = Math.min(0, ...eq), mx = Math.max(0, ...eq), sp = (mx - mn) || 1;
   const pts = eq.map((v, i) => (i * w / Math.max(1, eq.length - 1)).toFixed(1) + ',' + (h - (v - mn) / sp * h).toFixed(1)).join(' ');
   const zero = (h - (0 - mn) / sp * h).toFixed(1);
-  return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="80" preserveAspectRatio="none"><line x1="0" x2="' + w + '" y1="' + zero + '" y2="' + zero + '" stroke="#262D36"/><polyline fill="none" stroke="#58A6FF" stroke-width="2" points="' + pts + '"/></svg>';
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="80" preserveAspectRatio="none"><line x1="0" x2="' + w + '" y1="' + zero + '" y2="' + zero + '" stroke="#D0D7DE"/><polyline fill="none" stroke="#0969DA" stroke-width="2" points="' + pts + '"/></svg>';
 }
 
 /* ---------- paper tab ---------- */
@@ -789,6 +805,7 @@ async function fetchHistory(s, nDays) {
   const td = today();
   return Object.keys(byDay).sort().filter((d) => d < td && byDay[d].length >= 330).slice(-nDays).map((d) => byDay[d]);
 }
+const BT_WARM = 4; // earlier sessions used only to warm up EMAs in the backtest
 const LOT_DEFAULT = { NIFTY: 65, BANKNIFTY: 30 };
 async function btLot(kind) {
   if (kind === 'rw') return { size: LOT_DEFAULT[btSym], note: 'default lot size' };
@@ -826,7 +843,7 @@ let btCache = null;
 async function getDays(kind) {
   if (kind === 'rw') return BTM.randomDays(120, 20260116, 0.0004);
   if (!cfg.token) throw new Error('First enter your Upstox token in Settings.');
-  const n = parseInt($('btdays').value, 10);
+  const n = parseInt($('btdays').value, 10) + BT_WARM;
   if (btCache && btCache.sym === btSym && btCache.n === n && btCache.day === today()) return btCache.days;
   const days = await fetchHistory(btSym, n);
   btCache = { sym: btSym, n, day: today(), days };
@@ -837,8 +854,9 @@ async function btAB(kind) {
   ['btgo', 'btrw', 'btab', 'btabrw'].forEach((i) => ($(i).disabled = true)); out.innerHTML = '';
   try {
     const days = await getDays(kind);
-    if (days.length < 20) throw new Error('At least 20 days of data needed. Got: ' + days.length);
-    const res = await BTM.compare(days, { rr: 2, symbol: btSym }, 0.7, async (nm, i, n) => { st.textContent = nm + ': day ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
+    const W = kind === 'rw' ? 0 : BT_WARM;
+    if (days.length - W < 20) throw new Error('At least 20 trading days of data needed. Got: ' + (days.length - W));
+    const res = await BTM.compare(days, { rr: 2, symbol: btSym, warm: W }, 0.7, async (nm, i, n) => { st.textContent = nm + ': day ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
     st.textContent = '';
     const cell = (x) => x.n ? x.n + ' | ' + pc(x.winRate) + ' | ' + rr2(x.expR) + (x.se != null ? ' ±' + x.se.toFixed(2) : '') : 'no trades';
     let h = '<div class="card"><b>A/B test' + (kind === 'rw' ? ' (random data sanity)' : ' (' + (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ')') + '</b><p class="note">' + res.nDays + ' days. First ' + res.cut + ' days = in-sample, remaining ' + (res.nDays - res.cut) + ' days = out-of-sample. Format: trades | win rate | expectancy ±error (index R).</p></div>';
@@ -859,20 +877,21 @@ async function btGo(kind) {
   try {
     const days = await getDays(kind);
     if (!days.length) throw new Error('No historical data found.');
-    const opts = { rr: 2, symbol: btSym }, trades = [];
-    for (let i = 0; i < days.length; i++) {
-      trades.push(...BTM.simulateDay(days[i], opts));
-      if (i % 4 === 0) { st.textContent = 'Running test: day ' + (i + 1) + '/' + days.length; await new Promise((r) => setTimeout(r, 0)); }
+    const W = kind === 'rw' ? 0 : BT_WARM, opts = { rr: 2, symbol: btSym, warm: W }, trades = [], pa = BTM.prevAggs(days, W);
+    if (days.length - W < 1) throw new Error('Not enough days of data.');
+    for (let i = W; i < days.length; i++) {
+      trades.push(...BTM.simulateDay(days[i], Object.assign({}, opts, { prevAgg: pa[i] })));
+      if ((i - W) % 4 === 0) { st.textContent = 'Running test: day ' + (i - W + 1) + '/' + (days.length - W); await new Promise((r) => setTimeout(r, 0)); }
     }
     st.textContent = '';
     const res = BTM.summarize(trades, opts), s0 = res.stats;
     let verdict;
     if (kind === 'rw') verdict = 'Sanity test: random data has no edge. Expectancy here should be around 0 (or slightly negative). If it shows a big profit, the backtest has a bug.';
     else if (s0.n < 30) verdict = 'Sample is very small (' + s0.n + ' trades). Do not draw conclusions. Run more days.';
-    else if (s0.expR > 0 && s0.winRate - res.ci > res.breakevenWinRate) verdict = 'A positive edge is visible at index level, but it will shrink after option theta, spread and charges. Confirm it with paper trading.';
-    else if (s0.expR > 0) verdict = 'Expectancy is positive but the win rate range touches break-even (' + pc(res.breakevenWinRate) + '). Not a proven edge, needs more data.';
+    else if (res.z != null && res.z >= 2) verdict = 'Expectancy is positive and clearly above the noise (' + rr2(s0.expR) + ' ± ' + res.se.toFixed(2) + 'R). At index level only: it will shrink after option theta, spread and charges. Confirm it with paper trading.';
+    else if (s0.expR > 0) verdict = 'Expectancy is ' + rr2(s0.expR) + ' but the error is ±' + (res.se == null ? '?' : res.se.toFixed(2)) + 'R, so it could be zero. Win rate ' + pc(s0.winRate) + ' vs real break-even ' + (res.beReal == null ? '-' : pc(res.beReal)) + ' (from your own average win/loss). Not a proven edge, needs more data.';
     else verdict = 'No edge visible. Do not put real money on this rule set. Change the rules or drop the strategy.';
-    let h = '<div class="card"><b>' + (kind === 'rw' ? 'Random data sanity test' : (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ' backtest') + '</b><p class="note">' + days.length + ' days | RR 1:' + res.rr + ' | win rate ' + pc(s0.winRate) + ' ± ' + pc(res.ci) + ' | break-even win rate ' + pc(res.breakevenWinRate) + '</p><p>' + verdict + '</p>' + spark(res.equity) + '</div>';
+    let h = '<div class="card"><b>' + (kind === 'rw' ? 'Random data sanity test' : (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ' backtest') + '</b><p class="note">' + (days.length - W) + ' days (+' + W + ' warm-up) | target 1:' + res.rr + ' | win rate ' + pc(s0.winRate) + ' ± ' + pc(res.ci) + ' | real break-even win rate ' + (res.beReal == null ? '-' : pc(res.beReal)) + ' (theoretical for 1:' + res.rr + ' is ' + pc(res.breakevenWinRate) + ', but most exits are time exits, so wins are smaller) | expectancy ' + rr2(s0.expR) + ' ± ' + (res.se == null ? '-' : res.se.toFixed(2)) + 'R</p><p>' + verdict + '</p>' + spark(res.equity) + '</div>';
     h += statsCard(s0, 'Result (index R, before charges)', false);
     const lt = await btLot(kind), cap0 = parseFloat($('btcap').value) || cfg.capital;
     const mv = BTM.inr(trades, { capital: cap0, riskPct: parseFloat($('btrisk').value) || cfg.riskPct, premPct: (parseFloat($('btprem').value) || 0.45) / 100, lotSize: lt.size, charges: (tb, ts) => AN.charges({ tb, ts, orders: 2 }, chCfg()).total });
@@ -886,6 +905,24 @@ async function btGo(kind) {
 }
 $('btgo').onclick = () => btGo('live');
 $('btrw').onclick = () => btGo('rw');
+async function btFactors() {
+  const out = $('btout'), st = $('btstat'), ids = ['btgo', 'btrw', 'btab', 'btabrw', 'btfac'];
+  ids.forEach((i) => ($(i).disabled = true)); out.innerHTML = '';
+  try {
+    const days = await getDays('live'), W = BT_WARM;
+    if (days.length - W < 20) throw new Error('At least 20 trading days of data needed. Got: ' + (days.length - W));
+    const res = await BTM.ablation(days, { rr: 2, symbol: btSym, warm: W }, async (nm, i, n) => { st.textContent = nm + ': day ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
+    st.textContent = '';
+    let h = '<div class="card"><b>Factor test (' + (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ', ' + res.nDays + ' days)</b><p class="note">Each row removes one factor and lowers the minimum score by 1 so the test is fair. Format: trades | win rate | expectancy ±error (index R). If removing a factor changes nothing beyond the noise, that factor adds little.</p></div>';
+    res.rows.forEach((r) => {
+      h += '<div class="card"><b>' + r.name + '</b><div class="kv" style="margin-top:8px"><span>Result</span><span>' + (r.st.n ? r.st.n + ' | ' + pc(r.st.winRate) + ' | ' + rr2(r.st.expR) + (r.st.se != null ? ' ±' + r.st.se.toFixed(2) : '') : 'no trades') + '</span>' + (r.delta != null ? '<span>Change vs baseline</span><span>' + rr2(r.delta) + ' (noise ±' + r.noise.toFixed(2) + ')</span>' : '') + '</div><p class="note" style="margin-top:8px">' + r.note + '</p></div>';
+    });
+    h += '<p class="note">Do not remove a factor based on one run. Use this to find redundant factors, then confirm with paper trading.</p>';
+    out.innerHTML = h;
+  } catch (e) { st.textContent = ''; out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>'; }
+  ids.forEach((i) => ($(i).disabled = false));
+}
+$('btfac').onclick = btFactors;
 
 /* ---------- journal ---------- */
 const TAGS = [{ n: 'Followed the plan', good: 1 }, { n: 'Exited early out of fear' }, { n: 'Moved/removed the SL' }, { n: 'Late entry' }, { n: 'Overtrade / revenge' }, { n: 'Oversized' }, { n: 'SL hit, then price reversed' }];
@@ -942,9 +979,9 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
-  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; guard.clear(); $('saved').textContent = 'Saved.';
 };
 </script>

@@ -20,7 +20,7 @@
       const res = e.analyze({
         symbol: opts.symbol, spot: candles[i].c, candles: candles.slice(0, i + 1), vix: null, chain: [], lotSize: 1,
         nowMs, signalsToday: signals, indexOnly: true, maxRiskRs: 1, dayPnl: dayR, consecLosses: consec,
-        lastLossAgoMin: lastLossT == null ? null : (nowMs - lastLossT) / 60000, recentSignals: recent, flags: opts.flags,
+        lastLossAgoMin: lastLossT == null ? null : (nowMs - lastLossT) / 60000, recentSignals: recent, flags: opts.flags, prevAgg: opts.prevAgg,
       });
       if (res.noTrade || !res.signal) continue;
       const sg = res.signal, dir = sg.dir;
@@ -52,18 +52,25 @@
   };
 
   // days: array of ascending candle arrays (one per day)
+  // Warm-up: the first `warm` days are used only to initialise EMAs for the next days; trades come from the rest.
+  BT.prevAggs = function (days, W) {
+    return days.map((_, i) => (W > 0 && i >= W ? E().prevAgg([].concat(...days.slice(i - W, i))) : null));
+  };
   BT.run = function (days, opts) {
-    const trades = [];
-    days.forEach((d) => trades.push(...BT.simulateDay(d, opts)));
+    const W = (opts && opts.warm) || 0, pa = BT.prevAggs(days, W), trades = [];
+    for (let i = W; i < days.length; i++) trades.push(...BT.simulateDay(days[i], Object.assign({}, opts, { prevAgg: pa[i] })));
     return BT.summarize(trades, opts);
   };
 
   BT.summarize = function (trades, opts) {
     const rr = (opts && opts.rr) || 2;
     const st = A().stats(trades.map((t) => ({ r: t.r })));
+    const se = trades.length > 1 ? sd(trades.map((t) => t.r)) / Math.sqrt(trades.length) : null;
+    // Realised break-even win rate from the actual average win / loss (not the theoretical 1/(1+RR)).
+    const beReal = st.n && st.avgWinR > 0 && st.avgLossR < 0 ? -st.avgLossR / (st.avgWinR - st.avgLossR) : null;
     const by = (f) => { const m = {}; trades.forEach((t) => { const k = f(t); (m[k] = m[k] || []).push({ r: t.r }); }); const o = {}; Object.keys(m).forEach((k) => (o[k] = A().stats(m[k]))); return o; };
     return {
-      trades, stats: st, rr, breakevenWinRate: 1 / (1 + rr),
+      trades, stats: st, rr, breakevenWinRate: 1 / (1 + rr), beReal, se, z: se ? st.expR / se : null,
       ci: st.n ? A().winRateCI(st.winRate, st.n) : null,
       byDir: by((t) => t.option), byHour: by((t) => t.hour), byWhy: by((t) => t.why),
       equity: trades.reduce((a, t) => { a.push((a.length ? a[a.length - 1] : 0) + t.r); return a; }, []),
@@ -111,16 +118,26 @@
     { name: '+ Breakout confirm', flags: { confirm: true } },
     { name: '+ Sideways filter', flags: { regime: true } },
     { name: 'Both filters', flags: { confirm: true, regime: true } },
+    { name: '+ Retest of opening range', flags: { retest: true } },
+  ];
+  // Ablation: neutralise one droppable factor (EMA9/20, 15m trend, momentum) with the min score lowered by 1.
+  BT.ABLATION = [
+    { name: 'Baseline (5 index factors, min score 4)', flags: {} },
+    { name: 'All factors, min score 3 (control)', flags: { minScore: 3 } },
+    { name: 'Without EMA9/EMA20 alignment (min 3)', flags: { drop: 'ema9', minScore: 3 } },
+    { name: 'Without 15m trend (min 3)', flags: { drop: 'trend15', minScore: 3 } },
+    { name: 'Without 3-candle momentum (min 3)', flags: { drop: 'mom', minScore: 3 } },
   ];
   // Compare variants on the same days. First `split` fraction of days = in-sample, rest = out-of-sample.
   BT.compare = async function (days, opts, split, tick) {
-    const cut = Math.max(1, Math.floor(days.length * (split || 0.7)));
+    const W = (opts && opts.warm) || 0, pa = BT.prevAggs(days, W), nd = days.length - W;
+    const cut = Math.max(1, Math.floor(nd * (split || 0.7)));
     const rows = [];
     for (const v of BT.VARIANTS) {
       const tin = [], tout = [];
-      for (let i = 0; i < days.length; i++) {
-        (i < cut ? tin : tout).push(...BT.simulateDay(days[i], Object.assign({}, opts, { flags: v.flags })));
-        if (tick && i % 4 === 0) await tick(v.name, i + 1, days.length);
+      for (let i = 0; i < nd; i++) {
+        (i < cut ? tin : tout).push(...BT.simulateDay(days[W + i], Object.assign({}, opts, { flags: v.flags, prevAgg: pa[W + i] })));
+        if (tick && i % 4 === 0) await tick(v.name, i + 1, nd);
       }
       const f = (t) => { const st = A().stats(t.map((x) => ({ r: x.r }))); st.se = t.length > 1 ? sd(t.map((x) => x.r)) / Math.sqrt(t.length) : null; return st; };
       rows.push({ name: v.name, flags: v.flags, inS: f(tin), outS: f(tout) });
@@ -138,7 +155,31 @@
       else if (r.inS.expR > base.inS.expR) r.verdict = 'Better only on the older data. Likely overfit, do not use.';
       else r.verdict = 'Not better than the baseline.';
     });
-    return { rows, cut, nDays: days.length };
+    return { rows, cut, nDays: nd };
+  };
+
+  // Which factors matter? Full-sample stats per variant, with the difference vs baseline and its noise level.
+  BT.ablation = async function (days, opts, tick) {
+    const W = (opts && opts.warm) || 0, pa = BT.prevAggs(days, W), nd = days.length - W, rows = [];
+    for (const v of BT.ABLATION) {
+      const tr = [];
+      for (let i = 0; i < nd; i++) {
+        tr.push(...BT.simulateDay(days[W + i], Object.assign({}, opts, { flags: v.flags, prevAgg: pa[W + i] })));
+        if (tick && i % 4 === 0) await tick(v.name, i + 1, nd);
+      }
+      const st = A().stats(tr.map((x) => ({ r: x.r })));
+      st.se = tr.length > 1 ? sd(tr.map((x) => x.r)) / Math.sqrt(tr.length) : null;
+      rows.push({ name: v.name, flags: v.flags, st });
+    }
+    const b = rows[0].st;
+    rows.forEach((r, i) => {
+      if (!i) { r.note = 'Reference'; return; }
+      if (!r.st.n || !b.n || r.st.se == null || b.se == null) { r.note = 'Not enough trades to compare.'; return; }
+      const d = r.st.expR - b.expR, noise = Math.sqrt(r.st.se * r.st.se + b.se * b.se);
+      r.delta = d; r.noise = noise;
+      r.note = Math.abs(d) < 2 * noise ? 'Within noise of the baseline: this change makes no provable difference.' : (d > 0 ? 'Clearly better than the baseline.' : 'Clearly worse than the baseline: this factor helps.');
+    });
+    return { rows, nDays: nd };
   };
 
   // Deterministic random-walk days (no edge by construction) to sanity-check the machinery.

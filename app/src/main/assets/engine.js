@@ -31,6 +31,20 @@
     return [...g.values()].sort((a, b) => a.k - b.k).filter((b) => 555 + (b.k + 1) * m <= nowMin);
   };
 
+  // Earlier sessions (ascending 1-min candles) -> closed 5m / 15m close series, aggregated one session
+  // at a time (never merging candles of different days). Used only to warm up the EMAs.
+  E.prevAgg = function (c) {
+    const byDay = new Map();
+    c.forEach((x) => { const d = E.istDate(x.t); if (!byDay.has(d)) byDay.set(d, []); byDay.get(d).push(x); });
+    const c5 = [], c15 = [];
+    [...byDay.keys()].sort().forEach((d) => {
+      const end = Date.parse(d + 'T15:31:00+05:30'), rows = byDay.get(d);
+      E.aggregate(rows, 5, end).forEach((b) => c5.push(b.c));
+      E.aggregate(rows, 15, end).forEach((b) => c15.push(b.c));
+    });
+    return { c5, c15 };
+  };
+
   E.analyze = function (inp) {
     const { symbol, spot, candles, vix, chain, lotSize, nowMs } = inp;
     const signalsToday = inp.signalsToday || 0;
@@ -42,6 +56,8 @@
     const nm = E.istMin(nowMs);
     const c5 = E.aggregate(candles, 5, nowMs);
     const c15 = E.aggregate(candles, 15, nowMs);
+    const pa = inp.prevAgg || (inp.prevCandles && inp.prevCandles.length ? E.prevAgg(inp.prevCandles) : null); // EMA warm-up
+    const flg = inp.flags || {};
     const orC = candles.filter((x) => { const m = E.istMin(x.t); return m >= 555 && m < 570; });
     const orHigh = orC.length ? Math.max(...orC.map((x) => x.h)) : null;
     const orLow = orC.length ? Math.min(...orC.map((x) => x.l)) : null;
@@ -71,13 +87,15 @@
 
     if (c5.length < 8) return stop('Not enough data. Need at least 40 minutes of closed candles (check after 9:55).');
     const closes5 = c5.map((x) => x.c);
-    const e9 = E.ema(closes5, 9);
-    const e20 = E.ema(closes5, 20);
+    const w5 = pa ? pa.c5.concat(closes5) : closes5;
+    const e9 = E.ema(w5, 9);
+    const e20 = E.ema(w5, 20);
     const ema9 = e9[e9.length - 1];
     const ema20 = e20[e20.length - 1];
     const closes15 = c15.map((x) => x.c);
-    const e15 = closes15.length >= 3 ? E.ema(closes15, 20) : null;
-    Object.assign(res.snap, { ema9, ema20 });
+    const w15 = pa ? pa.c15.concat(closes15) : closes15;
+    const e15 = closes15.length >= (pa ? 1 : 3) ? E.ema(w15, 20) : null;
+    Object.assign(res.snap, { ema9, ema20, warm: pa ? { c5: pa.c5.length, c15: pa.c15.length } : null });
 
     const sgn = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
     const n = closes5.length;
@@ -93,6 +111,8 @@
       { name: 'PCR', v: pcr == null ? 0 : pcr > 1.1 ? 1 : pcr < 0.8 ? -1 : 0, t: pcr == null ? 'NA' : pcr.toFixed(2) },
       { name: 'Momentum (3 candle)', v: mom, t: mom > 0 ? 'Higher closes' : mom < 0 ? 'Lower closes' : 'Mixed' },
     ];
+    const dropIdx = { ema9: 1, trend15: 3, mom: 5 }; // test-only: neutralise one factor (ablation backtest)
+    if (flg.drop && dropIdx[flg.drop] != null) { comps[dropIdx[flg.drop]].v = 0; comps[dropIdx[flg.drop]].t = 'ignored (test)'; }
     res.checks = comps;
     const score = comps.reduce((s, c) => s + c.v, 0);
     res.score = score;
@@ -116,7 +136,7 @@
         return stop('Upstox and Angel One spot prices do not match (' + spot.toFixed(1) + ' vs ' + inp.altSpot.toFixed(1) + '). Data cannot be trusted, No Trade.');
       }
     }
-    if (Math.abs(score) < 4 || orb !== dir || trendEma !== dir) {
+    if (Math.abs(score) < (flg.minScore || 4) || orb !== dir || trendEma !== dir) {
       return stop('Setup is unclear (score ' + score + '/6). Trend, opening range and EMA do not all agree.');
     }
     const rs = inp.recentSignals || [];
@@ -128,6 +148,16 @@
       const l2 = c5.slice(-2);
       const ok = l2.length === 2 && l2.every((x) => (dir > 0 ? x.c > orHigh : x.c < orLow));
       if (!ok) return stop('Breakout not confirmed: the last 2 closed 5-min candles did not close outside the opening range (fake breakout risk).');
+    }
+    if (fl.retest) {
+      // Retest: price closed beyond the opening range, later pulled back to the level, and held it.
+      const lvl = dir > 0 ? orHigh : orLow;
+      const beyond = (x) => (dir > 0 ? x.c > lvl : x.c < lvl);
+      const i0 = c5.findIndex(beyond);
+      const touched = (x) => (dir > 0 ? x.l <= lvl * 1.0002 : x.h >= lvl * 0.9998);
+      let ok = i0 >= 0 && beyond(c5[c5.length - 1]);
+      if (ok) { ok = false; for (let k = i0 + 1; k < c5.length; k++) if (touched(c5[k]) && beyond(c5[k])) { ok = true; break; } }
+      if (!ok) return stop('Retest not confirmed: price has not pulled back to the opening-range level and held it (fake breakout risk).');
     }
     if (fl.regime) {
       const w = closes5.slice(-13);
@@ -193,6 +223,9 @@
     if ((!atm || atm.lots === 0) && otm && otm.lots > 0) pick = otm;
     if (!pick) return stop('No strike passed the filters (low delta, wide spread, or no premium data).');
 
+    if (maxRiskRs > 0 && pick.lots === 0) {
+      return stop('Setup is valid (' + pick.option + ' ' + pick.strike + ', premium ' + pick.ltp.toFixed(2) + ') but 1 lot risks Rs ' + Math.round(pick.riskPerLot) + ', above your risk budget of Rs ' + Math.round(maxRiskRs) + '. No Trade (the budget is never exceeded).');
+    }
     const p = pick.ltp;
     const last3 = c5.slice(-3);
     const invalid = dir > 0 ? Math.min(ema20, ...last3.map((x) => x.l)) : Math.max(ema20, ...last3.map((x) => x.h));
@@ -208,10 +241,9 @@
       lotCost: pick.ltp * lotSize,
     });
     if (vix != null && vix > 18) res.notes.push('VIX ' + vix.toFixed(1) + ' is high. Use half size.');
-    if (pick.lots === 0 && maxRiskRs > 0) res.notes.push('Not even 1 lot fits your risk limit. For information only, do not take this trade.');
     res.notes.push('If the index closes ' + (dir > 0 ? 'below' : 'above') + ' ' + Math.round(invalid) + ', exit without waiting for the premium SL.');
     res.notes.push('If there is no move or T1 within 45 minutes, exit (theta).');
-    res.notes.push('Book half the profit at T1 and move the stop-loss to entry for the rest.');
+    res.notes.push(pick.lots >= 2 ? 'At T1 sell half of the lots (whole lots only) and move the stop-loss to entry for the rest.' : 'With 1 lot you cannot split the position: exit the whole lot at T1.');
     return res;
   };
 

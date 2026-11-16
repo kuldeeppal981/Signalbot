@@ -5,7 +5,7 @@
   const L = {};
   const E = () => root.SignalEngine || require('./engine.js');
   const SLOTS = 75; // 9:15..15:30 in 5-minute slots
-  const C = { up: '#3DDC97', dn: '#FF6B6B', ema9: '#58A6FF', ema20: '#F2B84B', grid: '#262D36', mut: '#8B949E', tx: '#E6EDF3' };
+  const C = { up: '#1A7F37', dn: '#CF222E', ema9: '#0969DA', ema20: '#BF8700', grid: '#E1E4E8', mut: '#656D76', tx: '#1F2328' };
 
   // 1-minute candles -> 5-minute candles, including the still-forming one.
   L.agg5 = function (c1, nowMs) {
@@ -24,12 +24,13 @@
 
   // signals: [{tMs, option, dir, strike, entryLo, entryHi, sl, t1, t2, spot, inv, src}]
   // trades:  [{fillAt, closedAt, exitWhy, netPnl, fillSpot, exitSpot}]
-  L.model = function (c1, nowMs, signals, trades, ltp) {
+  L.model = function (c1, nowMs, signals, trades, ltp, prevAgg) {
     const e = E(), bars = L.agg5(c1, nowMs);
     const lb = bars[bars.length - 1];
     if (ltp > 0 && lb && lb.forming) { lb.c = ltp; lb.h = Math.max(lb.h, ltp); lb.l = Math.min(lb.l, ltp); } // live price into the forming candle
     const closes = bars.map((b) => b.c);
-    const ema9 = e.ema(closes, 9), ema20 = e.ema(closes, 20);
+    const off = prevAgg ? prevAgg.c5.length : 0, wc = prevAgg ? prevAgg.c5.concat(closes) : closes; // EMAs warmed up on earlier sessions
+    const ema9 = e.ema(wc, 9).slice(off), ema20 = e.ema(wc, 20).slice(off);
     const first15 = c1.filter((x) => { const m = e.istMin(x.t); return m >= 555 && m < 570; });
     const orDone = e.istMin(nowMs) >= 570;
     const or = first15.length && orDone ? { hi: Math.max(...first15.map((x) => x.h)), lo: Math.min(...first15.map((x) => x.l)) } : null;
@@ -97,7 +98,7 @@
     if (m.last != null) {
       g.setLineDash([2 * dpr, 3 * dpr]); g.strokeStyle = C.tx; g.lineWidth = 1; g.beginPath(); g.moveTo(0, Y(m.last)); g.lineTo(pw, Y(m.last)); g.stroke(); g.setLineDash([]);
       g.fillStyle = C.tx; g.fillRect(pw, Y(m.last) - 7 * dpr, padR, 14 * dpr);
-      g.fillStyle = '#0E1116'; g.textAlign = 'left'; g.fillText(m.last.toFixed(1), pw + 3 * dpr, Y(m.last));
+      g.fillStyle = '#FFFFFF'; g.textAlign = 'left'; g.fillText(m.last.toFixed(1), pw + 3 * dpr, Y(m.last));
     }
     // markers
     m.marks.forEach((mk) => {
@@ -113,7 +114,7 @@
         g.fillText(mk.label, x + (x > pw * 0.7 ? -s : s), ty + dirv * s * 2.4);
         g.font = (10 * dpr) + 'px system-ui';
       } else {
-        g.fillStyle = mk.type === 'fill' ? C.ema9 : (mk.win ? C.up : C.dn); g.strokeStyle = '#0E1116'; g.lineWidth = dpr;
+        g.fillStyle = mk.type === 'fill' ? C.ema9 : (mk.win ? C.up : C.dn); g.strokeStyle = '#FFFFFF'; g.lineWidth = dpr;
         g.beginPath(); g.arc(x, y, 4 * dpr, 0, Math.PI * 2); g.fill(); g.stroke();
       }
     });
