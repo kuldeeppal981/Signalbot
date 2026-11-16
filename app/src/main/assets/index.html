@@ -34,7 +34,7 @@ h1{font-size:18px;margin:0 0 12px}
 .note{color:var(--mut);font-size:13px;margin:4px 0}
 .warn{color:var(--warn);font-size:12px;margin-top:14px}
 label{display:block;color:var(--mut);font-size:13px;margin:12px 0 5px}
-input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font:15px system-ui}
+input,select,textarea{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font:15px system-ui}
 .j{display:flex;justify-content:space-between;gap:10px;align-items:center}
 .pos{color:var(--up)}.neg{color:var(--dn)}
 .hide{display:none}
@@ -150,8 +150,9 @@ details summary{cursor:pointer;font-weight:700}
 <script src="analytics.js"></script>
 <script src="paper.js"></script>
 <script src="backtest.js"></script>
+<script src="learn.js"></script>
 <script>
-const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest, LC = window.LiveChart;
+const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest, LN = window.Learn, LC = window.LiveChart;
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -308,6 +309,13 @@ function dlog(s, r) {
   const same = a.find((x) => x.sym === s && x.reason === reason);
   if (same) { same.n++; same.last = now; } else a.unshift({ sym: s, reason, sig: !r.noTrade, first: now, last: now, n: 1 });
   sv(dlKey(), a.slice(0, 250));
+  // long-term count of why the app said No Trade (kept 60 days, used by the Learning report)
+  if (r.noTrade) {
+    const nt = ld('sb_nt', {}), d = today(), k = String(r.reason || '?').replace(/[0-9]+(\.[0-9]+)?/g, '#').slice(0, 90);
+    nt[d] = nt[d] || {}; nt[d][k] = (nt[d][k] || 0) + 1;
+    const keep = Object.keys(nt).sort().slice(-60), o = {}; keep.forEach((x) => (o[x] = nt[x]));
+    sv('sb_nt', o);
+  }
 }
 function logSignal(sg, s, spot) {
   const a = ld(sigKey(), []), now = Date.now();
@@ -370,9 +378,14 @@ function riskState(s) {
     recentSignals: recent,
   };
 }
-function createPaper(sg, s) {
+function createPaper(sg, s, r) {
   if (cfg.paperOn === false) return null;
   const t = PP.create(sg, { sym: s }, Date.now());
+  if (r) { // remember the market context, so the Learning report can find patterns later
+    const sn = r.snap || {}, ck = r.checks || [], pc = ck.find((c) => c.name === 'PCR');
+    t.ctx = { score: r.score, vix: sn.vix == null ? null : sn.vix, pcr: sn.pcr == null ? null : sn.pcr, dte: sn.dte == null ? null : sn.dte, er: sn.er == null ? null : sn.er, ivPct: sn.ivPct == null ? null : sn.ivPct,
+      pcrAgree: pc ? (pc.v === (sg.option === 'CE' ? 1 : -1)) : null, spot: r.spot, factors: ck.map((c) => c.v) };
+  }
   const l = paperList(); l.unshift(t); savePaper(l);
   return t;
 }
@@ -516,7 +529,7 @@ async function scanSymbol(s) {
   logSignal(sg, s, x.r.spot);
   if (!done.some((q) => q.key === key) && done.length < 2) {
     done.push({ key, t: hm(), tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, sym: s }); sv(notifKey(), done);
-    const pt = createPaper(sg, s);
+    const pt = createPaper(sg, s, x.r);
     sv('sb_last', { date: today(), time: hm(), r: x.r, d: { expiry: x.d.expiry, demo: false, autoPaper: !!pt }, maxRiskRs: x.maxRiskRs });
     const cc = capCheck(sg);
     const txt = sg.strike + ' ' + sg.option + ' (' + sg.strikeType + ') | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | T1 ' + f2(sg.t1) +
@@ -640,7 +653,7 @@ function render(r, d, maxRiskRs) {
   };
   const pt = $('ptook');
   if (pt) pt.onclick = () => {
-    const t = createPaper(s, s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY');
+    const t = createPaper(s, s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY', r);
     pt.disabled = true; pt.textContent = t ? 'Paper trade started. See the Paper tab.' : 'Paper trading is off in Settings';
   };
 }
@@ -955,6 +968,10 @@ function renderJournal() {
   let h = '<h1>Journal</h1><div class="card"><div class="kv"><span>Closed trades</span><span>' + done.length + '</span>' +
     '<span>Win rate</span><span>' + (done.length ? Math.round(wins * 100 / done.length) + '%' : '-') + '</span>' +
     '<span>Total P&amp;L (after charges)</span><span class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + inr(tot) + '</span></div></div>';
+
+  h += '<div class="card"><div class="j"><b>Learning report</b><span class="badge b-no">COACH</span></div>' +
+    '<p class="note">The app studies your paper trades, journal tags and No-Trade reasons, finds patterns, and writes a report. It never changes the strategy by itself. Copy the report and send it to Claude to decide what to improve, then test any idea in Backtest first.</p>' +
+    '<button class="btn" id="lngo">Generate report</button><div id="lnout"></div></div>';
   const dl = ld(dlKey(), []);
   h += '<details class="card"><summary>Today\'s decision log (' + dl.length + ')</summary><p class="note">What the app decided on every scan. Reading the reason behind each "No Trade" is the best way to learn.</p>' +
     (dl.length ? dl.slice(0, 40).map((x) => '<div class="chk"><span>' + (x.sig ? '&#9650; ' : '') + (x.sym === 'NIFTY' ? 'Nifty' : 'BankN') + ': ' + esc(x.reason) + '</span><em>' + hmOf(x.first) + (x.n > 1 ? '-' + hmOf(x.last) + ' x' + x.n : '') + '</em></div>').join('') : '<p class="note">No scan has run yet today.</p>') + '</details>';
@@ -983,6 +1000,22 @@ function renderJournal() {
     h += '</div>';
   });
   $('t-jr').innerHTML = h;
+  $('lngo').onclick = () => {
+    const rep = LN.analyze({ paper: paperList(), journal: ld('sb_journal', []), nt: ld('sb_nt', {}), cfg, now: Date.now(), shadow: SHADOW, shadowRet, journalNet });
+    let o = '';
+    (rep.warnings || []).forEach((w) => (o += '<p class="note"><span class="badge b-dn">CAUTION</span> ' + esc(w) + '</p>'));
+    o += '<div class="kv" style="margin:8px 0"><span>Closed paper trades</span><span>' + rep.n + '</span><span>Avg R</span><span>' + (rep.n ? (rep.all.avgR >= 0 ? '+' : '') + rep.all.avgR.toFixed(2) : '-') + '</span><span>Missed</span><span>' + rep.missed + '</span></div>';
+    rep.suggestions.forEach((x) => (o += '<div class="chk"><span><b>' + esc(x.title) + '</b><br><em>' + esc(x.why) + '</em><br><em>Test: ' + esc(x.test) + '</em></span><em>' + (x.strength.indexOf('weak') === 0 ? 'weak' : x.strength) + '</em></div>'));
+    o += '<textarea id="lntxt" readonly style="width:100%;height:140px;margin-top:10px;font-size:11px"></textarea><button class="btn ghost" id="lncp">Copy full report</button>';
+    $('lnout').innerHTML = o;
+    $('lntxt').value = rep.text;
+    $('lncp').onclick = async () => {
+      let ok = false;
+      try { await navigator.clipboard.writeText(rep.text); ok = true; } catch (e) {}
+      if (!ok) { const ta = $('lntxt'); ta.focus(); ta.select(); try { ok = document.execCommand('copy'); } catch (e) {} }
+      $('lncp').textContent = ok ? 'Copied. Paste it to Claude' : 'Long-press the box above and copy';
+    };
+  };
   $('t-jr').querySelectorAll('button[data-tg]').forEach((b) => b.onclick = () => {
     const [id, i] = b.dataset.tg.split('|'), arr = ld('sb_journal', []), it = arr.find((a) => String(a.id) === id);
     if (!it) return;
