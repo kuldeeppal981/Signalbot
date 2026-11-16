@@ -70,12 +70,47 @@
     };
   };
 
+  // Money view: converts index-level R results into rupees for a given capital.
+  // Assumptions (stated in the UI): ATM premium = premPct of the index level, option stop-loss = 25% of premium,
+  // so 1R = one stop-loss = 0.25 x lot cost. Real option P&L will differ (theta, spread, delta).
+  // If the risk budget does not fit even 1 lot but 1 lot is affordable, 1 lot is taken (flagged as "forced").
+  BT.inr = function (trades, o) {
+    const cap = o.capital, slPct = o.slPct || 0.25, premPct = o.premPct || 0.0045, lot = o.lotSize;
+    const maxRisk = cap * (o.riskPct || 2) / 100;
+    const out = { capital: cap, maxRisk, lotSize: lot, taken: 0, skipped: 0, forced: 0, gross: 0, charges: 0, net: 0, equity: [], used: [], best: null, worst: null, maxDD: 0, riskTaken: [] };
+    let eq = 0, peak = 0, premSum = 0, premN = 0;
+    trades.forEach((t) => {
+      const premium = t.entry * premPct, lotCost = premium * lot, rpl = slPct * lotCost;
+      premSum += premium; premN++;
+      let lots = Math.floor(maxRisk / rpl), forced = false;
+      if (lots < 1) { if (lotCost <= cap) { lots = 1; forced = true; } else { out.skipped++; return; } }
+      lots = Math.min(lots, Math.floor(cap / lotCost));
+      if (lots < 1) { out.skipped++; return; }
+      const used = lots * lotCost, gross = t.r * lots * rpl;
+      const chg = o.charges ? o.charges(used, Math.max(0, used + gross)) : 0, net = gross - chg;
+      out.taken++; if (forced) out.forced++;
+      out.gross += gross; out.charges += chg; out.net += net; out.used.push(used); out.riskTaken.push(lots * rpl);
+      eq += net; peak = Math.max(peak, eq); out.maxDD = Math.max(out.maxDD, peak - eq);
+      out.equity.push(eq);
+      if (out.best == null || net > out.best) out.best = net;
+      if (out.worst == null || net < out.worst) out.worst = net;
+    });
+    out.premium = premN ? premSum / premN : 0; out.lotCost = out.premium * lot;
+    out.avgUsed = out.used.length ? out.used.reduce((a, b) => a + b, 0) / out.used.length : 0;
+    out.peakUsed = out.used.length ? Math.max(...out.used) : 0;
+    out.avgRisk = out.riskTaken.length ? out.riskTaken.reduce((a, b) => a + b, 0) / out.riskTaken.length : 0;
+    out.retPct = cap > 0 ? out.net / cap * 100 : 0;
+    out.avgNet = out.taken ? out.net / out.taken : 0;
+    out.maxDDPct = cap > 0 ? out.maxDD / cap * 100 : 0;
+    return out;
+  };
+
   const sd = (a) => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / Math.max(1, a.length - 1)); };
   BT.VARIANTS = [
     { name: 'Baseline', flags: {} },
     { name: '+ Breakout confirm', flags: { confirm: true } },
     { name: '+ Sideways filter', flags: { regime: true } },
-    { name: 'Dono filter', flags: { confirm: true, regime: true } },
+    { name: 'Both filters', flags: { confirm: true, regime: true } },
   ];
   // Compare variants on the same days. First `split` fraction of days = in-sample, rest = out-of-sample.
   BT.compare = async function (days, opts, split, tick) {
@@ -97,11 +132,11 @@
       if (!i) { r.verdict = 'Reference'; return; }
       const z = r.outS.se ? r.outS.expR / r.outS.se : 0;
       r.z = z;
-      if (r.outS.n < 25) r.verdict = 'Out-of-sample sample kam (' + r.outS.n + '). Pakka nahi.';
-      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR && z >= 2) r.verdict = 'Dono hisson mein behtar aur noise se upar. Rakhne layak.';
-      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR) r.verdict = 'Behtar dikh raha hai, par ±error ke andar (noise ho sakta hai). Pakka nahi, aur data chahiye.';
-      else if (r.inS.expR > base.inS.expR) r.verdict = 'Sirf purane data mein behtar. Overfit ka shak, mat lagao.';
-      else r.verdict = 'Baseline se behtar nahi.';
+      if (r.outS.n < 25) r.verdict = 'Out-of-sample sample is small (' + r.outS.n + '). Not conclusive.';
+      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR && z >= 2) r.verdict = 'Better in both halves and above the noise. Worth keeping.';
+      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR) r.verdict = 'Looks better, but within the ±error (could be noise). Not conclusive, needs more data.';
+      else if (r.inS.expR > base.inS.expR) r.verdict = 'Better only on the older data. Likely overfit, do not use.';
+      else r.verdict = 'Not better than the baseline.';
     });
     return { rows, cut, nDays: days.length };
   };

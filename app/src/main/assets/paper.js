@@ -14,7 +14,7 @@
       dir: sig.option === 'CE' ? 1 : -1, lots: Math.max(1, sig.lots || 1), lotSize: sig.lotSize, qty: Math.max(1, sig.lots || 1) * sig.lotSize,
       signalPrice: sig.ltp, entryLo: sig.entryLo, entryHi: sig.entryHi, sl: sig.sl, t1: sig.t1, t2: sig.t2,
       invalidation: sig.indexInvalidation, state: 'PENDING', createdAt: nowMs, validUntilMs, fillPrice: null, fillAt: null,
-      slCur: sig.sl, qtyOpen: 0, legs: [], log: [{ t: nowMs, m: 'Signal bana, entry ka wait' }],
+      slCur: sig.sl, qtyOpen: 0, legs: [], log: [{ t: nowMs, m: 'Signal created, waiting for entry' }],
     };
   };
 
@@ -39,9 +39,9 @@
     const nm = e.istMin(now);
     const exitPx = (q.bid > 0 ? Math.min(q.bid, q.ltp) : q.ltp * (1 - SLIP_PCT / 100));
     if (t.state === 'PENDING') {
-      if (now > t.validUntilMs) { t.state = 'MISSED'; note(t, now, 'Validity khatam, entry nahi mili'); ev.push('MISSED'); return ev; }
-      if (q.ltp <= t.sl) { t.state = 'MISSED'; note(t, now, 'Entry se pehle hi SL tak gir gaya'); ev.push('MISSED'); return ev; }
-      if (q.ltp > t.entryHi * 1.05) { t.state = 'MISSED'; note(t, now, 'Price bhaag gaya, chase nahi'); ev.push('MISSED'); return ev; }
+      if (now > t.validUntilMs) { t.state = 'MISSED'; note(t, now, 'Validity expired, entry missed'); ev.push('MISSED'); return ev; }
+      if (q.ltp <= t.sl) { t.state = 'MISSED'; note(t, now, 'Fell to the SL before entry'); ev.push('MISSED'); return ev; }
+      if (q.ltp > t.entryHi * 1.05) { t.state = 'MISSED'; note(t, now, 'Price ran away, not chasing'); ev.push('MISSED'); return ev; }
       if (q.ltp <= t.entryHi) {
         t.fillPrice = q.ask > 0 ? Math.max(q.ask, q.ltp) : q.ltp * (1 + SLIP_PCT / 100);
         t.fillAt = now; t.state = 'OPEN'; t.qtyOpen = t.qty; t.slCur = t.sl;

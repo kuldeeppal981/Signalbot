@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -51,18 +51,18 @@ details summary{cursor:pointer;font-weight:700}
   <section id="t-sig">
     <h1>Signal</h1>
     <div class="row"><div class="seg" id="seg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button></div></div>
-    <button class="btn" id="go">Signal check karo</button>
-    <button class="btn ghost" id="demo">Demo data se dekho</button>
+    <button class="btn" id="go">Check signal</button>
+    <button class="btn ghost" id="demo">Try with demo data</button>
     <div class="card" style="margin-top:12px">
       <b>Auto-scan</b>
       <p class="note" id="autost"></p>
-      <button class="btn" id="auto">Auto-scan chalu karo (notification)</button>
-      <button class="btn ghost" id="batt">Battery restriction hatao (zaroori)</button>
+      <button class="btn" id="auto">Start auto-scan (notifications)</button>
+      <button class="btn ghost" id="batt">Remove battery restriction (important)</button>
     </div>
     <div id="out" style="margin-top:14px"></div>
     <div class="card"><b>Expiry Zero-Hero</b> <span class="badge b-dn">HIGH RISK</span>
-      <p class="note">Sirf expiry din, 1:00-2:45 PM. Sasta far-OTM option, jo aksar zero hota hai. Din mein max 1.</p>
-      <button class="btn ghost" id="zh">Zero-Hero check karo</button>
+      <p class="note">Expiry day only, 1:00-2:45 PM. A cheap far-OTM option that often expires worthless. Max 1 per day.</p>
+      <button class="btn ghost" id="zh">Check Zero-Hero</button>
       <div id="zhout"></div></div>
   </section>
   <section id="t-ch" class="hide">
@@ -70,9 +70,9 @@ details summary{cursor:pointer;font-weight:700}
     <div class="seg" id="chseg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button></div>
     <p class="note" id="chst" style="margin-top:10px"></p>
     <div class="card" style="padding:8px 6px 6px"><canvas id="chcv"></canvas>
-      <p class="note" style="margin:6px 8px 2px" id="chinfo">Candle par tap karo: OHLC dikhega.</p>
+      <p class="note" style="margin:6px 8px 2px" id="chinfo">Tap a candle to see its OHLC.</p>
       <p class="note" style="margin:2px 8px 4px"><span style="color:#58A6FF">&#9632;</span> EMA9 &nbsp;<span style="color:#F2B84B">&#9632;</span> EMA20 &nbsp;<span style="color:#6e7681">- - -</span> Opening range &nbsp;<span style="color:#3DDC97">&#9650;</span> CE signal &nbsp;<span style="color:#FF6B6B">&#9660;</span> PE signal &nbsp;<span style="color:#58A6FF">&#9679;</span> paper fill</p></div>
-    <button class="btn ghost" id="chref" style="margin-top:0">Abhi refresh karo</button>
+    <button class="btn ghost" id="chref" style="margin-top:0">Refresh now</button>
     <p class="note" id="chscan"></p>
     <div id="chsigs"></div>
   </section>
@@ -81,11 +81,17 @@ details summary{cursor:pointer;font-weight:700}
     <h1>Backtest</h1>
     <div class="card">
       <div class="seg" id="btseg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button></div>
-      <label for="btdays">Kitne trading din</label>
+      <label for="btdays">Trading days</label>
       <select id="btdays"><option>20</option><option selected>40</option><option>60</option><option>100</option></select>
-      <button class="btn" id="btgo">Backtest chalao (Upstox data)</button>
-      <button class="btn" id="btab">A/B test: filters kaam karte hain? (Upstox data)</button>
-      <button class="btn ghost" id="btrw">Sanity test (random data, koi edge nahi)</button>
+      <label for="btcap">Capital (Rs)</label>
+      <input id="btcap" type="number" inputmode="numeric">
+      <label for="btrisk">Risk per trade (% of capital)</label>
+      <input id="btrisk" type="number" inputmode="decimal" step="0.1">
+      <label for="btprem">Assumed ATM option premium (% of index level)</label>
+      <input id="btprem" type="number" inputmode="decimal" step="0.05" value="0.45">
+      <button class="btn" id="btgo">Run backtest (Upstox data)</button>
+      <button class="btn" id="btab">A/B test: do the filters help? (Upstox data)</button>
+      <button class="btn ghost" id="btrw">Sanity test (random data, no edge)</button>
       <button class="btn ghost" id="btabrw">A/B sanity (random data)</button>
       <p class="note" id="btstat"></p>
     </div>
@@ -96,9 +102,9 @@ details summary{cursor:pointer;font-weight:700}
     <h1>Settings</h1>
     <div class="card">
       <label for="tok">Upstox access token</label>
-      <input id="tok" type="password" autocomplete="off" placeholder="Yahan paste karo">
-      <p class="note">Token sirf is phone mein save hota hai. Sirf api.upstox.com ko jata hai. Analytics (read-only) token best hai, kyunki isse order nahi lag sakta.</p>
-      <label for="ak">Angel One API key (optional, cross-check ke liye)</label>
+      <input id="tok" type="password" autocomplete="off" placeholder="Paste here">
+      <p class="note">The token is saved only on this phone and is sent only to api.upstox.com. A read-only Analytics token is best because it cannot place orders.</p>
+      <label for="ak">Angel One API key (optional, for cross-check)</label>
       <input id="ak" type="password" autocomplete="off">
       <label for="acc">Angel One client code</label>
       <input id="acc" type="text" autocomplete="off">
@@ -106,23 +112,23 @@ details summary{cursor:pointer;font-weight:700}
       <input id="apin" type="password" autocomplete="off">
       <label for="atotp">Angel One TOTP secret</label>
       <input id="atotp" type="password" autocomplete="off">
-      <p class="note">Yeh sab sirf is phone mein save hote hain. Angel ka login sensitive hai, isliye phone lock rakho. Khaali chhodo to Angel use nahi hoga.</p>
+      <p class="note">All of this is saved only on this phone. Angel login details are sensitive, so keep your phone locked. Leave blank to skip Angel.</p>
       <label for="zhon">Expiry Zero-Hero alerts (high risk)</label>
-      <select id="zhon"><option value="0">Band</option><option value="1">Chalu</option></select>
-      <label for="zhb">Zero-Hero budget per trade (Rs). 0 = capital ka 2%</label>
+      <select id="zhon"><option value="0">Off</option><option value="1">On</option></select>
+      <label for="zhb">Zero-Hero budget per trade (Rs). 0 = 2% of capital</label>
       <input id="zhb" type="number" inputmode="numeric">
       <label for="flc">Filter: breakout candle-close confirmation</label>
-      <select id="flc"><option value="0">Band</option><option value="1">Chalu</option></select>
+      <select id="flc"><option value="0">Off</option><option value="1">On</option></select>
       <label for="flr">Filter: sideways/choppy market block</label>
-      <select id="flr"><option value="0">Band</option><option value="1">Chalu</option></select>
-      <p class="note">Yeh dono pehle Backtest tab ke A/B test se check karo, phir hi chalu karo.</p>
-      <label for="ppon">Paper trading (signal aate hi virtual trade)</label>
-      <select id="ppon"><option value="1">Chalu</option><option value="0">Band</option></select>
+      <select id="flr"><option value="0">Off</option><option value="1">On</option></select>
+      <p class="note">Check both with the A/B test in the Backtest tab first, and turn them on only if they help.</p>
+      <label for="ppon">Paper trading (virtual trade as soon as a signal appears)</label>
+      <select id="ppon"><option value="1">On</option><option value="0">Off</option></select>
       <label for="chb">Brokerage per order (Rs)</label>
       <input id="chb" type="number" inputmode="decimal">
       <label for="chs">STT on option sell (%)</label>
       <input id="chs" type="number" inputmode="decimal" step="0.01">
-      <p class="note">Charges andaza hain (STT, exchange, GST, stamp). Apne broker ke charge calculator se match kar lena.</p>
+      <p class="note">Charges are estimates (STT, exchange, GST, stamp). Match them with your broker's charge calculator.</p>
       <label for="cap">Capital (Rs)</label>
       <input id="cap" type="number" inputmode="numeric">
       <label for="rp">Risk per trade (% of capital)</label>
@@ -174,7 +180,7 @@ window.__nativeCb = (id, status, b64) => {
   try { body = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))); } catch (e) {}
   if (status < 0) return p.rej(new Error('Network error: ' + body));
   let j = null; try { j = JSON.parse(body); } catch (e) {}
-  if (status === 401) return p.rej(new Error('Token galat ya expire ho gaya. Settings mein naya token daalo.'));
+  if (status === 401) return p.rej(new Error('Token is invalid or expired. Enter a new token in Settings.'));
   if (status < 200 || status > 299) {
     const m = j && j.errors && j.errors[0] && j.errors[0].message;
     const er = new Error('Upstox error ' + status + (m ? ': ' + m : '')); er.status = status;
@@ -183,11 +189,11 @@ window.__nativeCb = (id, status, b64) => {
   p.res(j);
 };
 const nfetch = (method, url, headers, body) => new Promise((res, rej) => {
-  if (!window.Native) return rej(new Error('Yeh app Android APK ke andar chalani hai.'));
+  if (!window.Native) return rej(new Error('This app must run inside the Android APK.'));
   const id = Math.random().toString(36).slice(2);
   pending[id] = { res, rej };
   window.Native.fetch(id, method, url, JSON.stringify(headers || {}), body || '');
-  setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('Timeout. Net check karo.')); } }, 30000);
+  setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('Timeout. Check your internet connection.')); } }, 30000);
 });
 // Every Upstox call goes through the guard: shared cache, spacing, budget, 429 backoff.
 const guard = window.Guard.create({ send: (path) => nfetch('GET', 'https://api.upstox.com' + path,
@@ -216,7 +222,7 @@ async function angelSpot(s) {
   const r = await nfetch('POST', ANGEL + '/rest/secure/angelbroking/market/v1/quote/', angelHdr(jwt),
     JSON.stringify({ mode: 'LTP', exchangeTokens: { NSE: [ANGEL_TOKENS[s]] } }));
   const row = r && r.data && r.data.fetched && r.data.fetched[0];
-  if (!row || !row.ltp) throw new Error('Angel LTP nahi mila');
+  if (!row || !row.ltp) throw new Error('Angel LTP not found');
   return row.ltp;
 }
 
@@ -240,7 +246,7 @@ async function loadLive(s) {
   const contracts = ct.data || [];
   const td = today();
   const exps = [...new Set(contracts.map((c) => c.expiry))].filter((d) => d >= td).sort();
-  if (!exps.length) throw new Error('Expiry nahi mili.');
+  if (!exps.length) throw new Error('Expiry not found.');
   const lotSize = (contracts.find((c) => c.expiry === exps[0]) || {}).lot_size;
   const ch = await api('/v2/option/chain?instrument_key=' + ek + '&expiry_date=' + exps[0], { ttl: TTL.chain });
   const chain = (ch.data || []).map((r) => ({
@@ -309,16 +315,16 @@ function capCheck(s) {
   const cap = cfg.capital, rpl = s.riskPerLot, cost = s.lotCost;
   const chg = AN.charges({ tb: s.ltp * s.lotSize, ts: s.ltp * s.lotSize, orders: 2 }, chCfg()).total;
   const pct = rpl / cap * 100;
-  let lvl = 'ok', msg = 'Capital ke hisaab se risk theek hai.';
-  if (cost > cap) { lvl = 'bad'; msg = '1 lot ka premium (' + inr(cost) + ') tere capital se zyada hai. Yeh trade afford nahi hoga, skip karo.'; }
-  else if (pct > 5) { lvl = 'bad'; msg = '1 lot ka SL risk capital ka ' + pct.toFixed(0) + '% hai. Safe limit 5% tak hai. Yeh trade skip karna behtar.'; }
-  else if (pct > 2.5) { lvl = 'warn'; msg = 'Risk thoda zyada (' + pct.toFixed(1) + '%). Sirf 1 lot lo, aur 2 loss ke baad us din band.'; }
-  const html = '<div class="card"><div class="j"><b>Capital check</b><span class="badge ' + (lvl === 'ok' ? 'b-up' : lvl === 'warn' ? 'b-no' : 'b-dn') + '">' + (lvl === 'ok' ? 'OK' : lvl === 'warn' ? 'SAVDHAN' : 'SKIP') + '</span></div>' +
+  let lvl = 'ok', msg = 'Risk is acceptable for your capital.';
+  if (cost > cap) { lvl = 'bad'; msg = 'The premium for 1 lot (' + inr(cost) + ') is more than your capital. You cannot afford this trade, skip it.'; }
+  else if (pct > 5) { lvl = 'bad'; msg = 'The SL risk for 1 lot is ' + pct.toFixed(0) + '% of your capital. The safe limit is 5%. Better to skip this trade.'; }
+  else if (pct > 2.5) { lvl = 'warn'; msg = 'Risk is a bit high (' + pct.toFixed(1) + '%). Take only 1 lot, and stop for the day after 2 losses.'; }
+  const html = '<div class="card"><div class="j"><b>Capital check</b><span class="badge ' + (lvl === 'ok' ? 'b-up' : lvl === 'warn' ? 'b-no' : 'b-dn') + '">' + (lvl === 'ok' ? 'OK' : lvl === 'warn' ? 'CAUTION' : 'SKIP') + '</span></div>' +
     '<div class="kv" style="margin-top:8px"><span>Capital</span><span>' + inr(cap) + '</span>' +
-    '<span>1 lot ka cost</span><span>' + inr(cost) + '</span>' +
-    '<span>1 lot ka SL risk</span><span>' + inr(rpl) + ' (' + pct.toFixed(1) + '%)</span>' +
-    '<span>3 lagataar SL tak</span><span class="neg">' + inr(rpl * 3) + ' (' + (pct * 3).toFixed(0) + '% capital)</span>' +
-    '<span>Charges (1 lot, aana-jaana)</span><span>~' + inr(chg) + (rpl > 0 ? ' (' + (chg / rpl * 100).toFixed(0) + '% of risk)' : '') + '</span></div>' +
+    '<span>Cost of 1 lot</span><span>' + inr(cost) + '</span>' +
+    '<span>SL risk of 1 lot</span><span>' + inr(rpl) + ' (' + pct.toFixed(1) + '%)</span>' +
+    '<span>After 3 SLs in a row</span><span class="neg">' + inr(rpl * 3) + ' (' + (pct * 3).toFixed(0) + '% capital)</span>' +
+    '<span>Charges (1 lot, round trip)</span><span>~' + inr(chg) + (rpl > 0 ? ' (' + (chg / rpl * 100).toFixed(0) + '% of risk)' : '') + '</span></div>' +
     '<p class="note">' + msg + '</p></div>';
   return { lvl, pct, html };
 }
@@ -387,7 +393,7 @@ async function manageTrades() {
       const nm = t.idxName + ' ' + t.strike + ' ' + t.option;
       if (hasNative()) {
         if (ev.includes('FILLED')) window.Native.notify('PAPER: entry fill', nm + ' @ ' + f2(t.fillPrice));
-        if (ev.includes('T1')) window.Native.notify('PAPER: T1 hit', nm + ' | aadha book, baaki ka SL entry pe');
+        if (ev.includes('T1')) window.Native.notify('PAPER: T1 hit', nm + ' | half booked, SL moved to entry');
         if (ev.includes('CLOSED')) window.Native.notify('PAPER closed (' + t.exitWhy + ')', nm + ' | Net ' + inr(t.netPnl) + ' | ' + t.r.toFixed(2) + 'R');
       }
     } catch (e) { /* keep trade state, try next minute */ }
@@ -396,7 +402,7 @@ async function manageTrades() {
   return act.length;
 }
 async function compute(s, demo) {
-  if (!demo && !cfg.token) throw new Error('Pehle Settings mein Upstox token daalo, ya Demo try karo.');
+  if (!demo && !cfg.token) throw new Error('First enter your Upstox token in Settings, or try the demo.');
   const d = demo ? demoData(s) : await loadLive(s);
   if (!demo && angelOn()) {
     try { d.altSpot = await angelSpot(s); }
@@ -410,13 +416,13 @@ async function compute(s, demo) {
   const signalsToday = demo ? 0 : Math.max(ld(cntKey(), 0), ld(notifKey(), []).length);
   const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
-  if (d.angelErr) r.notes.unshift('Angel cross-check fail hua (' + d.angelErr + '). Sirf Upstox data pe chal raha hai.');
+  if (d.angelErr) r.notes.unshift('Angel cross-check failed (' + d.angelErr + '). Running on Upstox data only.');
   return { r, d, maxRiskRs };
 }
 async function run(demo) {
   const out = $('out'), go = $('go');
   go.disabled = true; $('demo').disabled = true;
-  out.innerHTML = '<p class="note">Data la raha hoon...</p>';
+  out.innerHTML = '<p class="note">Fetching data...</p>';
   try {
     const x = await compute(sym, demo);
     last = { r: x.r, d: x.d };
@@ -443,18 +449,18 @@ function renderZH(z, d) {
     '<span>Target 1 (2x)</span><span class="pos">' + f2(s.t1) + '</span>' +
     '<span>Target 2 (4x)</span><span class="pos">' + f2(s.t2) + '</span>' +
     '<span>Lots</span><span>' + s.lots + '</span>' +
-    '<span>Max loss (puri premium)</span><span class="neg">' + inr(s.maxLoss) + '</span>' +
-    '<span>Validity</span><span>' + s.validUntil + ' tak</span></div>' +
-    '<p class="note">T1 pe aadha nikalo, baaki ka SL entry pe. 3:15 se pehle sab nikal do. Average mat karo.</p>' +
-    '<button class="btn ghost" id="zhtook">Zero-Hero trade liya (aaj ke liye ho gaya)</button>';
+    '<span>Max loss (full premium)</span><span class="neg">' + inr(s.maxLoss) + '</span>' +
+    '<span>Valid until</span><span>' + s.validUntil + '</span></div>' +
+    '<p class="note">Sell half at T1 and move the SL to entry for the rest. Exit everything before 3:15. Do not average down.</p>' +
+    '<button class="btn ghost" id="zhtook">I took the Zero-Hero trade (done for today)</button>';
 }
 $('zh').onclick = async () => {
-  const out = $('zhout'); $('zh').disabled = true; out.innerHTML = '<p class="note">Data la raha hoon...</p>';
+  const out = $('zhout'); $('zh').disabled = true; out.innerHTML = '<p class="note">Fetching data...</p>';
   try {
     const x = await compute(sym, false);
     const z = zhEval(x.d);
     out.innerHTML = renderZH(z, x.d);
-    const t = $('zhtook'); if (t) t.onclick = () => { sv(zhKey(), ld(zhKey(), 0) + 1); t.disabled = true; t.textContent = 'Note ho gaya'; };
+    const t = $('zhtook'); if (t) t.onclick = () => { sv(zhKey(), ld(zhKey(), 0) + 1); t.disabled = true; t.textContent = 'Noted'; };
   } catch (e) { out.innerHTML = '<p class="note">Error: ' + e.message + '</p>'; }
   $('zh').disabled = false;
 };
@@ -465,8 +471,8 @@ let autoTimer = null, scanning = false, svcOn = false, autoMsg = '';
 const hm = () => E.hhmm(E.istMin(Date.now()));
 function setAutoUi() {
   const on = !!ld('sb_auto', false);
-  $('auto').textContent = on ? 'Auto-scan band karo' : 'Auto-scan chalu karo (notification)';
-  $('autost').textContent = on ? (autoMsg || 'Chalu hai.') : 'Band hai. Chalu karoge to 9:30-2:30 ke beech har minute dono index check honge.';
+  $('auto').textContent = on ? 'Stop auto-scan' : 'Start auto-scan (notifications)';
+  $('autost').textContent = on ? (autoMsg || 'Running.') : 'Off. When on, both indices are checked every minute between 9:30 and 2:30.';
 }
 function notifyOnce(tag, title, text) {
   const k = 'sb_err_' + today(), seen = ld(k, []);
@@ -497,7 +503,7 @@ async function scanSymbol(s) {
     sv('sb_last', { date: today(), time: hm(), r: x.r, d: { expiry: x.d.expiry, demo: false }, maxRiskRs: x.maxRiskRs });
     const cc = capCheck(sg);
     const txt = sg.strike + ' ' + sg.option + ' (' + sg.strikeType + ') | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | T1 ' + f2(sg.t1) +
-      ' | ' + sg.lots + ' lot | ' + sg.validUntil + ' tak' + (cc.lvl !== 'ok' ? ' | CAPITAL RISK ' + cc.pct.toFixed(0) + '%!' : '');
+      ' | ' + sg.lots + ' lot(s) | valid until ' + sg.validUntil + (cc.lvl !== 'ok' ? ' | CAPITAL RISK ' + cc.pct.toFixed(0) + '%!' : '');
     if (hasNative()) window.Native.notify('SIGNAL: ' + sg.indexName + ' ' + sg.option, txt);
   }
   return nm + ': SIGNAL ' + sg.strike + ' ' + sg.option;
@@ -505,10 +511,10 @@ async function scanSymbol(s) {
 async function autoTick() {
   if (scanning || !ld('sb_auto', false)) return;
   const now = Date.now(), nm = E.istMin(now), dow = new Date(now + 19800000).getUTCDay();
-  if (dow === 0 || dow === 6) { autoMsg = 'Weekend, market band. ' + hm(); return setAutoUi(); }
+  if (dow === 0 || dow === 6) { autoMsg = 'Weekend, market closed. ' + hm(); return setAutoUi(); }
   if (nm >= 555 && nm <= 935) { try { await manageTrades(); } catch (e) {} }
-  if (nm > 930) { stopService(); autoMsg = 'Market band. Kal subah app kholo, auto-scan apne aap chalu ho jayega.'; return setAutoUi(); }
-  if (nm < 570 || nm > (cfg.zhOn ? 885 : 870)) { autoMsg = (nm < 570 ? '9:30 ka wait.' : '2:30 ke baad naya entry nahi.') + ' ' + hm(); return setAutoUi(); }
+  if (nm > 930) { stopService(); autoMsg = 'Market closed. Open the app tomorrow morning and auto-scan will start by itself.'; return setAutoUi(); }
+  if (nm < 570 || nm > (cfg.zhOn ? 885 : 870)) { autoMsg = (nm < 570 ? 'Waiting for 9:30.' : 'No new entries after 2:30.') + ' ' + hm(); return setAutoUi(); }
   scanning = true;
   const lines = [];
   try {
@@ -516,7 +522,7 @@ async function autoTick() {
       try { lines.push(await scanSymbol(s)); }
       catch (e) {
         lines.push((s === 'NIFTY' ? 'Nifty' : 'BankNifty') + ': error');
-        if (/Token/i.test(e.message)) notifyOnce('token', 'SignalBot: token problem', 'Upstox token galat ya expire. Settings mein naya daalo.');
+        if (/Token/i.test(e.message)) notifyOnce('token', 'SignalBot: token problem', 'Upstox token is invalid or expired. Enter a new one in Settings.');
         else autoMsg = 'Error: ' + e.message;
       }
     }
@@ -530,7 +536,7 @@ function stopAuto() { stopService(); if (autoTimer) { clearInterval(autoTimer); 
 $('auto').onclick = () => {
   const on = !ld('sb_auto', false);
   sv('sb_auto', on);
-  if (on) { if (hasNative()) window.Native.askPermissions(); autoMsg = 'Shuru ho raha hai...'; startAuto(); } else { stopAuto(); autoMsg = ''; }
+  if (on) { if (hasNative()) window.Native.askPermissions(); autoMsg = 'Starting...'; startAuto(); } else { stopAuto(); autoMsg = ''; }
   setAutoUi();
 };
 $('batt').onclick = () => { if (hasNative()) window.Native.batterySettings(); };
@@ -540,7 +546,7 @@ if (ld('sb_auto', false)) startAuto();
   const l = ld('sb_last', null);
   if (l && l.date === today()) {
     render(l.r, l.d, l.maxRiskRs);
-    $('out').insertAdjacentHTML('afterbegin', '<p class="note">Auto-scan ka last signal (' + l.time + ' baje). Dobara check dabao taaki taaza data aaye.</p>');
+    $('out').insertAdjacentHTML('afterbegin', '<p class="note">Last signal from auto-scan (' + l.time + '). Tap Check signal again for fresh data.</p>');
   }
 })();
 
@@ -565,17 +571,17 @@ function render(r, d, maxRiskRs) {
       '<span>Risk per lot (SL)</span><span>' + inr(s.riskPerLot) + '</span>' +
       '<span>Lots (risk limit ' + inr(maxRiskRs) + ')</span><span>' + s.lots + '</span>' +
       (s.delta != null ? '<span>Delta</span><span>' + f2(s.delta) + '</span>' : '') +
-      '<span>Validity</span><span>' + s.validUntil + ' tak</span></div></div>';
+      '<span>Valid until</span><span>' + s.validUntil + '</span></div></div>';
   }
   if (!r.noTrade) {
     h += '<div class="card"><b>Extra notes</b>' + r.notes.map((n) => '<p class="note">' + n + '</p>').join('') +
-      (d.demo ? '' : '<button class="btn" id="took">Trade liya (journal mein likho)</button><button class="btn ghost" id="ptook">Paper trade shuru karo</button>') + '</div>';
+      (d.demo ? '' : '<button class="btn" id="took">I took this trade (log in journal)</button><button class="btn ghost" id="ptook">Start paper trade</button>') + '</div>';
   }
   if (!r.noTrade) h += capCheck(s).html;
   if (d.health) {
     const hh = d.health, m = hh.metrics || {};
     h += '<div class="card"><div class="j"><b>Data health</b><span class="badge ' + (hh.ok ? (hh.issues.length ? 'b-no' : 'b-up') : 'b-dn') + '">' + (hh.ok ? (hh.issues.length ? 'WARN' : 'OK') : 'BAD') + '</span></div>' +
-      '<p class="note">Last candle ' + (m.lastCandleAgeMin == null ? '-' : m.lastCandleAgeMin.toFixed(1)) + ' min purani | missing ' + (m.missing || 0) + ' | broker farq ' + (m.brokerDiff == null ? 'NA' : (m.brokerDiff * 100).toFixed(2) + '%') + '</p>' +
+      '<p class="note">Last candle ' + (m.lastCandleAgeMin == null ? '-' : m.lastCandleAgeMin.toFixed(1)) + ' min old | missing ' + (m.missing || 0) + ' | broker diff ' + (m.brokerDiff == null ? 'NA' : (m.brokerDiff * 100).toFixed(2) + '%') + '</p>' +
       hh.issues.map((i) => '<p class="note" style="color:var(--' + (i.level === 'bad' ? 'dn' : 'warn') + ')">' + i.text + '</p>').join('') + '</div>';
   }
   h += '<div class="card"><b>Checklist (score ' + (r.score == null ? '-' : r.score) + '/6)</b>' +
@@ -587,7 +593,7 @@ function render(r, d, maxRiskRs) {
     '<span>Support (max Put OI)</span><span>' + (sn.support || '-') + '</span>' +
     '<span>Resistance (max Call OI)</span><span>' + (sn.resistance || '-') + '</span>' +
     '<span>PCR</span><span>' + (sn.pcr == null ? '-' : f2(sn.pcr)) + '</span></div></div>';
-  h += '<p class="warn">Yeh educational signal hai. Market unpredictable hai. Sirf utna risk lo jitna loss seh sakte ho. Yeh financial advice nahi hai.</p>';
+  h += '<p class="warn">This is an educational signal. The market is unpredictable. Risk only what you can afford to lose. This is not financial advice.</p>';
   $('out').innerHTML = h;
   const tb = $('took');
   if (tb) tb.onclick = () => {
@@ -595,12 +601,12 @@ function render(r, d, maxRiskRs) {
     j.unshift({ id: Date.now(), date: today(), idx: s.indexName, opt: s.option, strike: s.strike, entry: s.ltp, sl: s.sl, t1: s.t1,
       lots: Math.max(1, s.lots), lotSize: s.lotSize, exit: null });
     sv('sb_journal', j); sv(cntKey(), ld(cntKey(), 0) + 1);
-    tb.disabled = true; tb.textContent = 'Journal mein save ho gaya';
+    tb.disabled = true; tb.textContent = 'Saved to journal';
   };
   const pt = $('ptook');
   if (pt) pt.onclick = () => {
     const t = createPaper(s, s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY');
-    pt.disabled = true; pt.textContent = t ? 'Paper trade shuru. Paper tab mein dekho.' : 'Paper trading Settings mein band hai';
+    pt.disabled = true; pt.textContent = t ? 'Paper trade started. See the Paper tab.' : 'Paper trading is off in Settings';
   };
 }
 
@@ -622,12 +628,12 @@ function chartRedraw() {
 }
 function chartStatus() {
   const g = guard.stats(), d = chData, tm = d ? new Date(d.at + 19800000).toISOString().slice(11, 19) : '-';
-  $('chst').innerHTML = (d && d.ltp ? '<b>' + d.ltp.toFixed(2) + '</b> | ' : '') + 'update ' + tm + ' | ' + (marketLive() ? 'market chalu, har 20 sec' : 'market band') +
-    '<br>API use: ' + g.perMin + '/min (apni limit ' + g.capMin + ')' + (g.paused ? ' | <span class="neg">broker ne roka, ' + g.pausedSec + ' sec ruk raha hoon</span>' : '');
+  $('chst').innerHTML = (d && d.ltp ? '<b>' + d.ltp.toFixed(2) + '</b> | ' : '') + 'updated ' + tm + ' | ' + (marketLive() ? 'market open, refreshing every 20 sec' : 'market closed') +
+    '<br>API use: ' + g.perMin + '/min (own limit ' + g.capMin + ')' + (g.paused ? ' | <span class="neg">broker rate limit hit, pausing ' + g.pausedSec + ' sec</span>' : '');
 }
 async function chartLoad(manual) {
   const st = $('chst');
-  if (!cfg.token) { st.textContent = 'Pehle Settings mein Upstox token daalo.'; return; }
+  if (!cfg.token) { st.textContent = 'First enter your Upstox token in Settings.'; return; }
   if (chLoading) return;
   chLoading = true;
   const s = chSym, pr = manual ? undefined : 'low';
@@ -642,19 +648,19 @@ async function chartLoad(manual) {
     if (ltp) lastSpot[s] = ltp;
     const candles = E.parseCandles((cd.data && cd.data.candles) || []);
     chData = { candles, ltp, at: Date.now() };
-    if (!candles.length) st.textContent = 'Abhi koi intraday candle nahi (market band ya holiday).';
+    if (!candles.length) st.textContent = 'No intraday candles yet (market closed or holiday).';
     else chartStatus();
     chartRedraw();
-  } catch (e) { st.textContent = 'Chart update nahi hua: ' + e.message + (chData ? ' (purana chart dikh raha hai)' : ''); }
+  } catch (e) { st.textContent = 'Chart update failed: ' + e.message + (chData ? ' (showing the old chart)' : ''); }
   finally { chLoading = false; }
 }
 function chartSigList() {
   const el = $('chsigs'); if (!el) return;
   const a = chartSigs().slice().reverse();
-  el.innerHTML = a.length ? '<h1 style="font-size:15px;margin-top:6px">Aaj ke signals (chart pe plot)</h1>' + a.map((x) =>
+  el.innerHTML = a.length ? '<h1 style="font-size:15px;margin-top:6px">Today\'s signals (plotted on the chart)</h1>' + a.map((x) =>
     '<div class="card"><div class="j"><b style="color:var(--' + (x.dir > 0 ? 'up' : 'dn') + ')">' + (x.dir > 0 ? '&#9650;' : '&#9660;') + ' ' + esc(x.option) + ' ' + esc(x.strike) + '</b><span class="note">' + hmOf(x.tMs) + ' | index ' + f2(x.spot) + '</span></div>' +
-    '<div class="kv" style="margin-top:6px"><span>Entry zone</span><span>' + f2(x.entryLo) + ' - ' + f2(x.entryHi) + '</span><span>Premium SL</span><span class="neg">' + f2(x.sl) + '</span><span>T1 / T2</span><span class="pos">' + f2(x.t1) + ' / ' + f2(x.t2) + '</span><span>Index SL (close)</span><span class="neg">' + (x.inv || '-') + '</span><span>Lots</span><span>' + x.lots + '</span></div></div>').join('')
-    : '<p class="note">Abhi tak koi signal nahi aaya. Zyadatar din No Trade hi hota hai, yeh normal hai. Signal aate hi yahan marker aur levels dikhenge.</p>';
+    '<div class="kv" style="margin-top:6px"><span>Entry zone</span><span>' + f2(x.entryLo) + ' - ' + f2(x.entryHi) + '</span><span>Premium SL</span><span class="neg">' + f2(x.sl) + '</span><span>T1 / T2</span><span class="pos">' + f2(x.t1) + ' / ' + f2(x.t2) + '</span><span>Index SL (on close)</span><span class="neg">' + (x.inv || '-') + '</span><span>Lots</span><span>' + x.lots + '</span></div></div>').join('')
+    : '<p class="note">No signal yet. Most days are No Trade, which is normal. When a signal comes, its marker and levels will show here.</p>';
 }
 async function chartScan() {
   const nm = E.istMin(Date.now());
@@ -676,7 +682,7 @@ async function chartTick() {
 }
 function chartStart() {
   chartStop();
-  $('chscan').textContent = ld('sb_auto', false) ? 'Auto-scan chalu hai: signal wahi se aate hain aur yahan plot hote hain.' : 'Chart khula hai: is index ka signal-scan bhi har minute chalta hai (9:30-2:30). Notification ke liye Auto-scan chalu rakho.';
+  $('chscan').textContent = ld('sb_auto', false) ? 'Auto-scan is on: signals come from it and are plotted here.' : 'While the chart is open, this index is also scanned for signals every minute (9:30-2:30). Keep Auto-scan on for notifications.';
   chartLoad(true).then(() => { chartSigList(); chartScan(); });
   chTimer = setInterval(chartTick, 20000);
 }
@@ -688,7 +694,7 @@ $('chcv').onclick = (ev) => {
   if (!chModel) return;
   const r = $('chcv').getBoundingClientRect(), k = LC.slotAtX(chLay, ev.clientX - r.left);
   const b = chModel.bars.find((x) => x.k === k), mk = chModel.marks.filter((m) => m.k === k);
-  let t = b ? E.hhmm(555 + k * 5) + ' | O ' + f2(b.o) + ' H ' + f2(b.h) + ' L ' + f2(b.l) + ' C ' + f2(b.c) + (b.forming ? ' (chal rahi)' : '') : E.hhmm(555 + k * 5) + ': candle nahi';
+  let t = b ? E.hhmm(555 + k * 5) + ' | O ' + f2(b.o) + ' H ' + f2(b.h) + ' L ' + f2(b.l) + ' C ' + f2(b.c) + (b.forming ? ' (forming)' : '') : E.hhmm(555 + k * 5) + ': no candle';
   mk.forEach((m) => {
     if (m.type === 'signal') t += ' | SIGNAL ' + m.label + ' entry ' + f2(m.sig.entryLo) + '-' + f2(m.sig.entryHi) + ' SL ' + f2(m.sig.sl) + ' T1 ' + f2(m.sig.t1);
     else if (m.type === 'fill') t += ' | paper fill';
@@ -701,7 +707,7 @@ $('chcv').onclick = (ev) => {
 const pc = (x) => (x == null ? '-' : (x * 100).toFixed(1) + '%');
 const rr2 = (x) => (x == null ? '-' : (x >= 0 ? '+' : '') + x.toFixed(2) + 'R');
 function statsCard(st, title, withRs) {
-  if (!st.n) return '<div class="card"><b>' + title + '</b><p class="note">Abhi koi closed trade nahi.</p></div>';
+  if (!st.n) return '<div class="card"><b>' + title + '</b><p class="note">No closed trades yet.</p></div>';
   return '<div class="card"><b>' + title + '</b><div class="kv" style="margin-top:8px">' +
     '<span>Trades</span><span>' + st.n + ' (' + st.wins + 'W / ' + st.losses + 'L)</span>' +
     '<span>Win rate</span><span>' + pc(st.winRate) + '</span>' +
@@ -709,7 +715,7 @@ function statsCard(st, title, withRs) {
     '<span>Expectancy</span><span class="' + (st.expR >= 0 ? 'pos' : 'neg') + '">' + rr2(st.expR) + ' per trade</span>' +
     '<span>Profit factor</span><span>' + (st.profitFactor == null ? 'no loss' : st.profitFactor.toFixed(2)) + '</span>' +
     '<span>Max drawdown</span><span>' + st.maxDDR.toFixed(1) + 'R' + (withRs ? ' (' + inr(st.maxDDPnl) + ')' : '') + '</span>' +
-    '<span>Lagataar loss (max)</span><span>' + st.maxLossStreak + '</span>' +
+    '<span>Max losing streak</span><span>' + st.maxLossStreak + '</span>' +
     '<span>Total</span><span class="' + (st.totalR >= 0 ? 'pos' : 'neg') + '">' + rr2(st.totalR) + (withRs ? ' (' + inr(st.totalPnl) + ')' : '') + '</span></div></div>';
 }
 function spark(eq) {
@@ -728,15 +734,15 @@ function shadowCard(l) {
     const rets = sd.map((t) => shadowRet(t, v)), hit = sd.filter((t) => t.sh && t.sh[v]).length, avg = rets.reduce((a, b) => a + b, 0) / rets.length;
     return '<span>SL ' + v + '%: SL hit ' + hit + '/' + sd.length + '</span><span class="' + (avg >= 0 ? 'pos' : 'neg') + '">avg ' + (avg >= 0 ? '+' : '') + avg.toFixed(1) + '%</span>';
   }).join('');
-  return '<div class="card"><b>Shadow SL: kaunsa stop behtar?</b><div class="kv" style="margin-top:8px">' + rows + '</div><p class="note">Har paper trade ko fill ke baad 45 min dekha. Alag premium stop hota to average return kya hota. Har minute ka sample hai, isliye andaza hai. ' + (sd.length < 20 ? 'Abhi sirf ' + sd.length + ' trade hain, nateeja mat nikalo (20-30+ chahiye).' : '') + '</p></div>';
+  return '<div class="card"><b>Shadow SL: which stop is better?</b><div class="kv" style="margin-top:8px">' + rows + '</div><p class="note">Each paper trade is watched for 45 min after the fill, to see what the average return would have been with a different premium stop. Sampled once a minute, so approximate. ' + (sd.length < 20 ? 'Only ' + sd.length + ' trades so far, do not draw conclusions (need 20-30+).' : '') + '</p></div>';
 }
 function renderPaper() {
   const l = paperList(), closed = l.filter((t) => t.state === 'CLOSED'), active = l.filter((t) => PP.ACTIVE.includes(t.state));
   const missed = l.filter((t) => t.state === 'MISSED').length;
   const st = AN.stats(closed.map((t) => ({ r: t.r, pnl: t.netPnl })));
   const ex = PP.execution(closed);
-  let h = '<h1>Paper trading</h1><div class="card"><div class="row"><button class="btn ghost" style="margin:0" id="ppupd">Abhi update karo</button><button class="btn ghost" style="margin:0" id="ppclr">Saaf karo</button></div><p class="note" id="ppmsg">Signal aate hi virtual trade banta hai. Fill ask pe, exit bid pe, charges ke saath. Auto-scan chalu ho to har minute update hota hai.</p></div>';
-  h += statsCard(st, 'Signal accuracy (charges ke baad, R mein)', true);
+  let h = '<h1>Paper trading</h1><div class="card"><div class="row"><button class="btn ghost" style="margin:0" id="ppupd">Update now</button><button class="btn ghost" style="margin:0" id="ppclr">Clear</button></div><p class="note" id="ppmsg">A virtual trade is created as soon as a signal appears. Fills at the ask, exits at the bid, with charges. Updates every minute when auto-scan is on.</p></div>';
+  h += statsCard(st, 'Signal accuracy (after charges, in R)', true);
   if (ex.n) {
     h += '<div class="card"><b>Execution validation</b><div class="kv" style="margin-top:8px">' +
       '<span>Avg slippage (fill vs signal)</span><span>' + ex.avgSlipPct.toFixed(2) + '%</span>' +
@@ -745,19 +751,19 @@ function renderPaper() {
       '<span>Total charges</span><span class="neg">' + inr(ex.charges) + '</span>' +
       '<span>Net P&amp;L</span><span class="' + (ex.net >= 0 ? 'pos' : 'neg') + '">' + inr(ex.net) + '</span>' +
       '<span>Charges / gross profit</span><span>' + (ex.chargesPctOfGross == null ? '-' : ex.chargesPctOfGross.toFixed(1) + '%') + '</span>' +
-      '<span>Missed (entry nahi mili)</span><span>' + missed + '</span></div></div>';
+      '<span>Missed (no entry)</span><span>' + missed + '</span></div></div>';
   }
   h += shadowCard(l);
   if (active.length) {
-    h += '<div class="card"><b>Chalu trades</b>' + active.map((t) => '<div class="chk"><span>' + t.idxName + ' ' + t.strike + ' ' + t.option + '</span><em>' + t.state + (t.fillPrice ? ' @ ' + f2(t.fillPrice) : '') + '</em></div>').join('') + '</div>';
+    h += '<div class="card"><b>Open trades</b>' + active.map((t) => '<div class="chk"><span>' + t.idxName + ' ' + t.strike + ' ' + t.option + '</span><em>' + t.state + (t.fillPrice ? ' @ ' + f2(t.fillPrice) : '') + '</em></div>').join('') + '</div>';
   }
   if (l.length) {
     h += '<div class="card"><b>Trades</b>' + l.slice(0, 15).map((t) => '<div class="chk"><span>' + t.date.slice(5) + ' ' + t.idxName + ' ' + t.strike + t.option + '<br><em>' + t.state + (t.exitWhy ? ' (' + t.exitWhy + ')' : '') + (t.fillPrice ? ' | fill ' + f2(t.fillPrice) + ' vs sig ' + f2(t.signalPrice) : '') + '</em></span><span class="' + (t.netPnl >= 0 ? 'pos' : 'neg') + '">' + (t.netPnl == null ? '' : inr(t.netPnl)) + '</span></div>').join('') + '</div>';
-  } else h += '<p class="note">Abhi koi paper trade nahi. Signal aane par ya "Paper trade shuru karo" dabane par yahan dikhega.</p>';
+  } else h += '<p class="note">No paper trades yet. They appear here when a signal comes or when you tap "Start paper trade".</p>';
   $('t-pp').innerHTML = h;
-  $('ppupd').onclick = async () => { $('ppmsg').textContent = 'Update ho raha hai...'; try { await manageTrades(); } catch (e) {} renderPaper(); };
+  $('ppupd').onclick = async () => { $('ppmsg').textContent = 'Updating...'; try { await manageTrades(); } catch (e) {} renderPaper(); };
   let armed = false;
-  $('ppclr').onclick = () => { if (!armed) { armed = true; $('ppclr').textContent = 'Pakka? Dobara dabao'; return; } sv('sb_paper', []); renderPaper(); };
+  $('ppclr').onclick = () => { if (!armed) { armed = true; $('ppclr').textContent = 'Sure? Tap again'; return; } sv('sb_paper', []); renderPaper(); };
 }
 
 /* ---------- backtest ---------- */
@@ -773,7 +779,7 @@ async function fetchHistory(s, nDays) {
   let cursor = new Date(end.getTime()), i = 0;
   while (cursor > from) {
     const start = new Date(Math.max(from.getTime(), cursor.getTime() - 27 * DAY));
-    $('btstat').textContent = 'Data la raha hoon... (' + (++i) + ')';
+    $('btstat').textContent = 'Fetching data... (' + (++i) + ')';
     const j = await api('/v2/historical-candle/' + ek + '/1minute/' + iso(cursor) + '/' + iso(start));
     ((j.data && j.data.candles) || []).forEach((r) => seen.set(r[0], r));
     cursor = new Date(start.getTime() - DAY);
@@ -783,10 +789,43 @@ async function fetchHistory(s, nDays) {
   const td = today();
   return Object.keys(byDay).sort().filter((d) => d < td && byDay[d].length >= 330).slice(-nDays).map((d) => byDay[d]);
 }
+const LOT_DEFAULT = { NIFTY: 65, BANKNIFTY: 30 };
+async function btLot(kind) {
+  if (kind === 'rw') return { size: LOT_DEFAULT[btSym], note: 'default lot size' };
+  try {
+    const j = await api('/v2/option/contract?instrument_key=' + encodeURIComponent(KEYS[btSym]), { ttl: TTL.contract });
+    const c = (j.data || []).find((x) => x.lot_size);
+    if (c) return { size: c.lot_size, note: 'lot size from Upstox' };
+  } catch (e) {}
+  return { size: LOT_DEFAULT[btSym], note: 'default lot size (could not fetch)' };
+}
+function moneyCard(m, note) {
+  const pcap = (x) => (m.capital > 0 ? ' (' + (x / m.capital * 100).toFixed(1) + '% of capital)' : '');
+  const cls = (x) => (x >= 0 ? 'pos' : 'neg');
+  let h = '<div class="card"><b>Money view (Rs)</b><p class="note">Capital ' + inr(m.capital) + ' | risk budget ' + inr(m.maxRisk) + ' per trade | lot ' + m.lotSize + ' (' + note + ') | assumed premium Rs ' + f2(m.premium) + ', 1 lot = ' + inr(m.lotCost) + '</p>';
+  if (!m.taken) {
+    return h + '<p class="neg">With ' + inr(m.capital) + ' you cannot buy even 1 lot (about ' + inr(m.lotCost) + '), so none of the ' + m.skipped + ' signals could have been traded. You need more capital, or the premium assumption is too high.</p></div>';
+  }
+  h += '<div class="kv" style="margin-top:8px">' +
+    '<span>Trades taken / skipped (1 lot unaffordable)</span><span>' + m.taken + ' / ' + m.skipped + '</span>' +
+    '<span>Capital used per trade (avg)</span><span>' + inr(m.avgUsed) + pcap(m.avgUsed) + '</span>' +
+    '<span>Capital used (max)</span><span>' + inr(m.peakUsed) + pcap(m.peakUsed) + '</span>' +
+    '<span>Actual risk per trade (avg)</span><span>' + inr(m.avgRisk) + pcap(m.avgRisk) + '</span>' +
+    '<span>Gross P&amp;L</span><span class="' + cls(m.gross) + '">' + inr(m.gross) + '</span>' +
+    '<span>Charges</span><span class="neg">' + inr(m.charges) + '</span>' +
+    '<span>Net P&amp;L</span><span class="' + cls(m.net) + '">' + inr(m.net) + '</span>' +
+    '<span>Return on capital</span><span class="' + cls(m.net) + '">' + (m.retPct >= 0 ? '+' : '') + m.retPct.toFixed(1) + '%</span>' +
+    '<span>Avg net per trade</span><span class="' + cls(m.avgNet) + '">' + inr(m.avgNet) + '</span>' +
+    '<span>Best / worst trade</span><span>' + inr(m.best) + ' / ' + inr(m.worst) + '</span>' +
+    '<span>Max drawdown</span><span class="neg">' + inr(m.maxDD) + ' (' + m.maxDDPct.toFixed(1) + '%)</span></div>' + spark(m.equity);
+  if (m.forced) h += '<p class="note neg">' + m.forced + ' trade(s) took 1 lot even though it risks more than your budget, because the budget is too small for 1 lot.</p>';
+  h += '<p class="note">Approximation: premium = % of index level, option stop-loss = 25% of premium, so 1R = one stop-loss. Real option P&amp;L will differ (theta, spread, delta, slippage). Charges use your Settings values. Fixed capital, no compounding.</p></div>';
+  return h;
+}
 let btCache = null;
 async function getDays(kind) {
   if (kind === 'rw') return BTM.randomDays(120, 20260116, 0.0004);
-  if (!cfg.token) throw new Error('Pehle Settings mein Upstox token daalo.');
+  if (!cfg.token) throw new Error('First enter your Upstox token in Settings.');
   const n = parseInt($('btdays').value, 10);
   if (btCache && btCache.sym === btSym && btCache.n === n && btCache.day === today()) return btCache.days;
   const days = await fetchHistory(btSym, n);
@@ -798,16 +837,16 @@ async function btAB(kind) {
   ['btgo', 'btrw', 'btab', 'btabrw'].forEach((i) => ($(i).disabled = true)); out.innerHTML = '';
   try {
     const days = await getDays(kind);
-    if (days.length < 20) throw new Error('Kam se kam 20 din ka data chahiye. Mila: ' + days.length);
-    const res = await BTM.compare(days, { rr: 2, symbol: btSym }, 0.7, async (nm, i, n) => { st.textContent = nm + ': din ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
+    if (days.length < 20) throw new Error('At least 20 days of data needed. Got: ' + days.length);
+    const res = await BTM.compare(days, { rr: 2, symbol: btSym }, 0.7, async (nm, i, n) => { st.textContent = nm + ': day ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
     st.textContent = '';
-    const cell = (x) => x.n ? x.n + ' | ' + pc(x.winRate) + ' | ' + rr2(x.expR) + (x.se != null ? ' ±' + x.se.toFixed(2) : '') : 'koi trade nahi';
-    let h = '<div class="card"><b>A/B test' + (kind === 'rw' ? ' (random data sanity)' : ' (' + (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ')') + '</b><p class="note">' + res.nDays + ' din. Pehle ' + res.cut + ' din = in-sample, baaki ' + (res.nDays - res.cut) + ' din = out-of-sample. Format: trades | win rate | expectancy ±error (index R).</p></div>';
+    const cell = (x) => x.n ? x.n + ' | ' + pc(x.winRate) + ' | ' + rr2(x.expR) + (x.se != null ? ' ±' + x.se.toFixed(2) : '') : 'no trades';
+    let h = '<div class="card"><b>A/B test' + (kind === 'rw' ? ' (random data sanity)' : ' (' + (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ')') + '</b><p class="note">' + res.nDays + ' days. First ' + res.cut + ' days = in-sample, remaining ' + (res.nDays - res.cut) + ' days = out-of-sample. Format: trades | win rate | expectancy ±error (index R).</p></div>';
     res.rows.forEach((r) => {
       h += '<div class="card"><b>' + r.name + '</b><div class="kv" style="margin-top:8px"><span>In-sample</span><span>' + cell(r.inS) + '</span><span>Out-of-sample</span><span>' + cell(r.outS) + '</span></div><p class="note" style="margin-top:8px">' + r.verdict + '</p></div>';
     });
-    h += '<p class="note">Rule: filter tabhi chalu karo jab out-of-sample mein bhi baseline se behtar aur positive ho, aur "±error" expectancy ke saamne chhota ho. Ek hi data pe baar baar filter badalne se wo us data pe fit ho jata hai. Charges aur option effects isme nahi hain.</p>';
-    if (kind === 'rw') h += '<p class="note">Random data mein koi edge nahi hota. Yahan koi variant "rakhne layak" bataye to test galat hai.</p>';
+    h += '<p class="note">Rule: turn a filter on only if it is better than the baseline and positive out-of-sample, and its ±error is small compared with the expectancy. Tweaking filters repeatedly on the same data makes them fit that data. Charges and option effects are not included.</p>';
+    if (kind === 'rw') h += '<p class="note">Random data has no edge. If any variant is called "worth keeping" here, the test is wrong.</p>';
     out.innerHTML = h;
   } catch (e) { st.textContent = ''; out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>'; }
   ['btgo', 'btrw', 'btab', 'btabrw'].forEach((i) => ($(i).disabled = false));
@@ -819,25 +858,28 @@ async function btGo(kind) {
   $('btgo').disabled = true; $('btrw').disabled = true; out.innerHTML = '';
   try {
     const days = await getDays(kind);
-    if (!days.length) throw new Error('Historical data nahi mila.');
+    if (!days.length) throw new Error('No historical data found.');
     const opts = { rr: 2, symbol: btSym }, trades = [];
     for (let i = 0; i < days.length; i++) {
       trades.push(...BTM.simulateDay(days[i], opts));
-      if (i % 4 === 0) { st.textContent = 'Test chal raha hai: din ' + (i + 1) + '/' + days.length; await new Promise((r) => setTimeout(r, 0)); }
+      if (i % 4 === 0) { st.textContent = 'Running test: day ' + (i + 1) + '/' + days.length; await new Promise((r) => setTimeout(r, 0)); }
     }
     st.textContent = '';
     const res = BTM.summarize(trades, opts), s0 = res.stats;
     let verdict;
-    if (kind === 'rw') verdict = 'Sanity test: random data mein koi edge nahi hai. Yahan expectancy 0 ke aaspaas (ya thodi negative) honi chahiye. Agar yahan bada profit dikhe to backtest mein bug hai.';
-    else if (s0.n < 30) verdict = 'Sample bahut chhota (' + s0.n + ' trade). Koi nateeja mat nikalo. Zyada din chalao.';
-    else if (s0.expR > 0 && s0.winRate - res.ci > res.breakevenWinRate) verdict = 'Index-level pe positive edge dikh raha hai. Lekin option ke theta, spread aur charges ke baad kam hoga. Paper trading mein confirm karo.';
-    else if (s0.expR > 0) verdict = 'Expectancy positive hai par win rate ki range break-even (' + pc(res.breakevenWinRate) + ') ko chhoti hai. Pakka edge nahi, aur data chahiye.';
-    else verdict = 'Edge nahi dikh raha. Is rule-set pe asli paisa mat lagao. Rules badlo ya is strategy ko chhodo.';
-    let h = '<div class="card"><b>' + (kind === 'rw' ? 'Random data sanity test' : (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ' backtest') + '</b><p class="note">' + days.length + ' din | RR 1:' + res.rr + ' | win rate ' + pc(s0.winRate) + ' ± ' + pc(res.ci) + ' | break-even win rate ' + pc(res.breakevenWinRate) + '</p><p>' + verdict + '</p>' + spark(res.equity) + '</div>';
-    h += statsCard(s0, 'Result (index R, charges ke bina)', false);
+    if (kind === 'rw') verdict = 'Sanity test: random data has no edge. Expectancy here should be around 0 (or slightly negative). If it shows a big profit, the backtest has a bug.';
+    else if (s0.n < 30) verdict = 'Sample is very small (' + s0.n + ' trades). Do not draw conclusions. Run more days.';
+    else if (s0.expR > 0 && s0.winRate - res.ci > res.breakevenWinRate) verdict = 'A positive edge is visible at index level, but it will shrink after option theta, spread and charges. Confirm it with paper trading.';
+    else if (s0.expR > 0) verdict = 'Expectancy is positive but the win rate range touches break-even (' + pc(res.breakevenWinRate) + '). Not a proven edge, needs more data.';
+    else verdict = 'No edge visible. Do not put real money on this rule set. Change the rules or drop the strategy.';
+    let h = '<div class="card"><b>' + (kind === 'rw' ? 'Random data sanity test' : (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ' backtest') + '</b><p class="note">' + days.length + ' days | RR 1:' + res.rr + ' | win rate ' + pc(s0.winRate) + ' ± ' + pc(res.ci) + ' | break-even win rate ' + pc(res.breakevenWinRate) + '</p><p>' + verdict + '</p>' + spark(res.equity) + '</div>';
+    h += statsCard(s0, 'Result (index R, before charges)', false);
+    const lt = await btLot(kind), cap0 = parseFloat($('btcap').value) || cfg.capital;
+    const mv = BTM.inr(trades, { capital: cap0, riskPct: parseFloat($('btrisk').value) || cfg.riskPct, premPct: (parseFloat($('btprem').value) || 0.45) / 100, lotSize: lt.size, charges: (tb, ts) => AN.charges({ tb, ts, orders: 2 }, chCfg()).total });
+    h += moneyCard(mv, lt.note);
     const grp = (o, f) => '<div class="kv" style="margin-top:6px">' + Object.keys(o).sort().map((k) => '<span>' + f(k) + '</span><span>' + o[k].n + ' trade | ' + pc(o[k].winRate) + ' | ' + rr2(o[k].expR) + '</span>').join('') + '</div>';
-    h += '<div class="card"><b>Breakdown</b>' + grp(res.byDir, (k) => k) + grp(res.byHour, (k) => k + ':00 baje') + grp(res.byWhy, (k) => 'Exit ' + k) + '</div>';
-    h += '<p class="note">Limit: yeh sirf index trend + opening range ko test karta hai. Option premium, OI, PCR, IV, delta aur spread ke purane data free nahi milte, isliye wo filters backtest mein nahi hain. Slippage aur charges bhi nahi. Pura stack paper trading se validate hoga.</p>';
+    h += '<div class="card"><b>Breakdown</b>' + grp(res.byDir, (k) => k) + grp(res.byHour, (k) => k + ':00 hour') + grp(res.byWhy, (k) => 'Exit ' + k) + '</div>';
+    h += '<p class="note">Limit: this tests only the index trend + opening range core. Historical option premium, OI, PCR, IV, delta and spread data are not freely available, so those filters are not in the backtest. Slippage and charges are not included either. The full stack is validated by paper trading.</p>';
     out.innerHTML = h;
   } catch (e) { st.textContent = ''; out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>'; }
   $('btgo').disabled = false; $('btrw').disabled = false;
@@ -846,7 +888,7 @@ $('btgo').onclick = () => btGo('live');
 $('btrw').onclick = () => btGo('rw');
 
 /* ---------- journal ---------- */
-const TAGS = [{ n: 'Plan follow kiya', good: 1 }, { n: 'Dar se jaldi exit' }, { n: 'SL door kiya / hataya' }, { n: 'Late entry' }, { n: 'Overtrade / revenge' }, { n: 'Size zyada' }, { n: 'SL hit, phir wapas gaya' }];
+const TAGS = [{ n: 'Followed the plan', good: 1 }, { n: 'Exited early out of fear' }, { n: 'Moved/removed the SL' }, { n: 'Late entry' }, { n: 'Overtrade / revenge' }, { n: 'Oversized' }, { n: 'SL hit, then price reversed' }];
 function renderJournal() {
   const j = ld('sb_journal', []);
   const done = j.filter((x) => x.exit != null);
@@ -855,23 +897,23 @@ function renderJournal() {
   const wins = done.filter((x) => pl(x) > 0).length;
   let h = '<h1>Journal</h1><div class="card"><div class="kv"><span>Closed trades</span><span>' + done.length + '</span>' +
     '<span>Win rate</span><span>' + (done.length ? Math.round(wins * 100 / done.length) + '%' : '-') + '</span>' +
-    '<span>Total P&amp;L (charges ke baad)</span><span class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + inr(tot) + '</span></div></div>';
+    '<span>Total P&amp;L (after charges)</span><span class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + inr(tot) + '</span></div></div>';
   const dl = ld(dlKey(), []);
-  h += '<details class="card"><summary>Aaj ka decision log (' + dl.length + ')</summary><p class="note">App ne har scan mein kya socha. "No Trade" ki wajah padhna seekhne ka sabse accha tareeka hai.</p>' +
-    (dl.length ? dl.slice(0, 40).map((x) => '<div class="chk"><span>' + (x.sig ? '&#9650; ' : '') + (x.sym === 'NIFTY' ? 'Nifty' : 'BankN') + ': ' + esc(x.reason) + '</span><em>' + hmOf(x.first) + (x.n > 1 ? '-' + hmOf(x.last) + ' x' + x.n : '') + '</em></div>').join('') : '<p class="note">Aaj abhi koi scan nahi hua.</p>') + '</details>';
+  h += '<details class="card"><summary>Today\'s decision log (' + dl.length + ')</summary><p class="note">What the app decided on every scan. Reading the reason behind each "No Trade" is the best way to learn.</p>' +
+    (dl.length ? dl.slice(0, 40).map((x) => '<div class="chk"><span>' + (x.sig ? '&#9650; ' : '') + (x.sym === 'NIFTY' ? 'Nifty' : 'BankN') + ': ' + esc(x.reason) + '</span><em>' + hmOf(x.first) + (x.n > 1 ? '-' + hmOf(x.last) + ' x' + x.n : '') + '</em></div>').join('') : '<p class="note">No scan has run yet today.</p>') + '</details>';
   const tagged = done.filter((x) => x.tags && x.tags.length);
   if (tagged.length) {
-    h += '<div class="card"><b>Tag ke hisaab se P&amp;L</b><div class="kv" style="margin-top:8px">' + TAGS.map((t) => {
+    h += '<div class="card"><b>P&amp;L by tag</b><div class="kv" style="margin-top:8px">' + TAGS.map((t) => {
       const g = tagged.filter((x) => x.tags.includes(t.n)); if (!g.length) return '';
       const sum = g.reduce((a, x) => a + pl(x), 0);
       return '<span>' + t.n + ' (' + g.length + ')</span><span class="' + (sum >= 0 ? 'pos' : 'neg') + '">' + inr(sum) + '</span>';
-    }).join('') + '</div><p class="note">Dekho: nuksan strategy se hua ya apni galti (tag) se.</p></div>';
+    }).join('') + '</div><p class="note">See whether losses came from the strategy or from your own mistakes (tags).</p></div>';
   }
   const rec = done.slice(0, 20);
   if (rec.length >= 20 && rec.filter((x) => pl(x) > 0).length / rec.length < 0.4) {
-    h += '<div class="card"><span class="badge b-dn">REVIEW</span><p class="note">Pichle 20 trades mein win rate 40% se kam hai. Naye trade rok kar journal review karo (chat mein paste karo).</p></div>';
+    h += '<div class="card"><span class="badge b-dn">REVIEW</span><p class="note">Win rate over the last 20 trades is below 40%. Pause new trades and review your journal.</p></div>';
   }
-  if (!j.length) h += '<p class="note">Abhi koi trade nahi. Signal ke baad "Trade liya" dabao.</p>';
+  if (!j.length) h += '<p class="note">No trades yet. Tap "I took this trade" after a signal.</p>';
   j.forEach((x) => {
     h += '<div class="card"><div class="j"><b>' + x.idx + ' ' + x.strike + ' ' + x.opt + '</b><span class="note">' + x.date + '</span></div>' +
       '<div class="note">Entry ' + f2(x.entry) + ' | SL ' + f2(x.sl) + ' | T1 ' + f2(x.t1) + ' | ' + x.lots + ' lot</div>';
@@ -900,10 +942,10 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
   cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
-  sv('sb_cfg', cfg); angelJwt = null; guard.clear(); $('saved').textContent = 'Save ho gaya.';
+  sv('sb_cfg', cfg); angelJwt = null; guard.clear(); $('saved').textContent = 'Saved.';
 };
 </script>
 </body>

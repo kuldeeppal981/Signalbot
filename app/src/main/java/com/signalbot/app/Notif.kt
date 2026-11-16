@@ -27,8 +27,8 @@ object Notif {
     fun scanNotification(c: Context): Notification =
         Notification.Builder(c, CH_SCAN)
             .setSmallIcon(android.R.drawable.ic_menu_search)
-            .setContentTitle("SignalBot auto-scan chalu")
-            .setContentText("Market hours mein signal dhoondh raha hai")
+            .setContentTitle("SignalBot auto-scan is on")
+            .setContentText("Looking for signals during market hours")
             .setContentIntent(openApp(c))
             .setOngoing(true)
             .build()

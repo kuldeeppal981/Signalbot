@@ -38,7 +38,7 @@
     const res = { symbol, spot, view: 'Sideways', reason: '', signal: null, noTrade: true, checks: [], notes: [], snap: {} };
     const stop = (why) => { res.noTrade = true; res.signal = null; res.reason = why; return res; };
 
-    if (!candles || !candles.length) return stop('Aaj ka intraday data nahi mila. Market band ho sakta hai.');
+    if (!candles || !candles.length) return stop('No intraday data for today. The market may be closed.');
     const nm = E.istMin(nowMs);
     const c5 = E.aggregate(candles, 5, nowMs);
     const c15 = E.aggregate(candles, 15, nowMs);
@@ -69,7 +69,7 @@
     }
     Object.assign(res.snap, { orHigh, orLow, dayHigh, dayLow, pcr, resistance, support, vix, atmIv, dte });
 
-    if (c5.length < 8) return stop('Data kam hai. Kam se kam 40 minute ke closed candles chahiye (9:55 ke baad dekho).');
+    if (c5.length < 8) return stop('Not enough data. Need at least 40 minutes of closed candles (check after 9:55).');
     const closes5 = c5.map((x) => x.c);
     const e9 = E.ema(closes5, 9);
     const e20 = E.ema(closes5, 20);
@@ -86,10 +86,10 @@
     const orb = orHigh == null ? 0 : spot > orHigh * 1.0003 ? 1 : spot < orLow * 0.9997 ? -1 : 0;
     const trendEma = sgn(spot - ema20);
     const comps = [
-      { name: 'Spot vs 5m EMA20', v: trendEma, t: spot > ema20 ? 'Upar' : 'Neeche' },
-      { name: '5m EMA9 vs EMA20', v: sgn(ema9 - ema20), t: ema9 > ema20 ? 'EMA9 upar' : 'EMA9 neeche' },
-      { name: 'Opening range (9:15-9:30)', v: orb, t: orb > 0 ? 'High todi' : orb < 0 ? 'Low todi' : 'Range ke andar' },
-      { name: '15m trend', v: e15 ? sgn(closes15[closes15.length - 1] - e15[e15.length - 1]) : 0, t: e15 ? '15m close vs EMA' : 'Data kam' },
+      { name: 'Spot vs 5m EMA20', v: trendEma, t: spot > ema20 ? 'Above' : 'Below' },
+      { name: '5m EMA9 vs EMA20', v: sgn(ema9 - ema20), t: ema9 > ema20 ? 'EMA9 above' : 'EMA9 below' },
+      { name: 'Opening range (9:15-9:30)', v: orb, t: orb > 0 ? 'Broke high' : orb < 0 ? 'Broke low' : 'Inside range' },
+      { name: '15m trend', v: e15 ? sgn(closes15[closes15.length - 1] - e15[e15.length - 1]) : 0, t: e15 ? '15m close vs EMA' : 'Not enough data' },
       { name: 'PCR', v: pcr == null ? 0 : pcr > 1.1 ? 1 : pcr < 0.8 ? -1 : 0, t: pcr == null ? 'NA' : pcr.toFixed(2) },
       { name: 'Momentum (3 candle)', v: mom, t: mom > 0 ? 'Higher closes' : mom < 0 ? 'Lower closes' : 'Mixed' },
     ];
@@ -100,34 +100,34 @@
     const dir = sgn(score);
 
     // Gates, in order. First failure = No Trade.
-    if (nm < 570) return stop('9:30 se pehle signal nahi. Opening range abhi ban rahi hai.');
-    if (nm > 870) return stop('2:30 PM ke baad naya entry nahi. Theta aur reversal ka risk.');
-    if (signalsToday >= 2) return stop('Aaj ke 2 signals ho chuke. Quality over quantity, ab kal.');
-    if (inp.health && inp.health.block) return stop('Data health: ' + inp.health.block + ' Signal rok diya.');
-    if (inp.openForSymbol) return stop('Is index mein pehle se open/pending trade hai. Naya signal nahi (stack mat karo).');
-    if (inp.lastLossAgoMin != null && inp.lastLossAgoMin < 15) return stop('Pichle loss ko 15 minute nahi hue. Cooldown, revenge trade se bacho.');
-    if ((inp.consecLosses || 0) >= 2) return stop('Aaj lagataar 2 loss hue. Overtrading se bacho, aaj ke liye bas.');
-    if (maxRiskRs > 0 && (inp.dayPnl || 0) <= -2 * maxRiskRs) return stop('Aaj ka loss limit (2x risk) hit ho gaya. Ab trade band.');
-    if (inp.expiry && inp.expiry === E.istDate(nowMs) && nm >= 810) return stop('Expiry day 1:30 PM ke baad fresh buy nahi. Theta bahut tez hai.');
-    if (vix != null && vix > 24) return stop('India VIX ' + vix.toFixed(1) + ' bahut high. Premium mehenga aur whipsaw zyada.');
+    if (nm < 570) return stop('No signals before 9:30. The opening range is still forming.');
+    if (nm > 870) return stop('No new entries after 2:30 PM (theta and reversal risk).');
+    if (signalsToday >= 2) return stop('Already 2 signals today. Quality over quantity, try again tomorrow.');
+    if (inp.health && inp.health.block) return stop('Data health: ' + inp.health.block + ' Signal blocked.');
+    if (inp.openForSymbol) return stop('There is already an open/pending trade on this index. No new signal (no stacking).');
+    if (inp.lastLossAgoMin != null && inp.lastLossAgoMin < 15) return stop('Less than 15 minutes since the last loss. Cooling off to avoid revenge trading.');
+    if ((inp.consecLosses || 0) >= 2) return stop('2 losses in a row today. Stopping for the day to avoid overtrading.');
+    if (maxRiskRs > 0 && (inp.dayPnl || 0) <= -2 * maxRiskRs) return stop('Daily loss limit (2x risk) reached. Trading stopped for today.');
+    if (inp.expiry && inp.expiry === E.istDate(nowMs) && nm >= 810) return stop('No fresh buys after 1:30 PM on expiry day. Theta decay is very fast.');
+    if (vix != null && vix > 24) return stop('India VIX ' + vix.toFixed(1) + ' is too high. Premiums are expensive and whipsaws are more likely.');
     if (inp.altSpot) {
       res.snap.altSpot = inp.altSpot;
       if (Math.abs(inp.altSpot - spot) / spot > 0.001) {
-        return stop('Upstox aur Angel One ka spot match nahi (' + spot.toFixed(1) + ' vs ' + inp.altSpot.toFixed(1) + '). Data pe bharosa nahi, No Trade.');
+        return stop('Upstox and Angel One spot prices do not match (' + spot.toFixed(1) + ' vs ' + inp.altSpot.toFixed(1) + '). Data cannot be trusted, No Trade.');
       }
     }
     if (Math.abs(score) < 4 || orb !== dir || trendEma !== dir) {
-      return stop('Setup clear nahi (score ' + score + '/6). Trend, opening range aur EMA teeno ek taraf nahi.');
+      return stop('Setup is unclear (score ' + score + '/6). Trend, opening range and EMA do not all agree.');
     }
     const rs = inp.recentSignals || [];
-    if (rs.some((x) => x.dir === dir && nowMs - x.t < 30 * 60000)) return stop('Isi direction ka signal pichle 30 min mein aa chuka. Duplicate nahi.');
-    if (rs.some((x) => x.dir === -dir && nowMs - x.t < 20 * 60000)) return stop('Pichle 20 min mein ulte direction ka signal tha. Whipsaw, ruko.');
+    if (rs.some((x) => x.dir === dir && nowMs - x.t < 30 * 60000)) return stop('A signal in the same direction came in the last 30 min. No duplicates.');
+    if (rs.some((x) => x.dir === -dir && nowMs - x.t < 20 * 60000)) return stop('An opposite-direction signal appeared in the last 20 min. Whipsaw risk, wait.');
     // Optional filters (default off until validated by A/B backtest + paper trading).
     const fl = inp.flags || {};
     if (fl.confirm) {
       const l2 = c5.slice(-2);
       const ok = l2.length === 2 && l2.every((x) => (dir > 0 ? x.c > orHigh : x.c < orLow));
-      if (!ok) return stop('Breakout confirm nahi: pichli 2 closed 5-min candle opening range ke bahar close nahi hui (fake breakout ka risk).');
+      if (!ok) return stop('Breakout not confirmed: the last 2 closed 5-min candles did not close outside the opening range (fake breakout risk).');
     }
     if (fl.regime) {
       const w = closes5.slice(-13);
@@ -135,11 +135,11 @@
       for (let i = 1; i < w.length; i++) path += Math.abs(w[i] - w[i - 1]);
       const er = path > 0 ? Math.abs(w[w.length - 1] - w[0]) / path : 0;
       res.snap.er = er;
-      if (er < (fl.erMin || 0.3)) return stop('Market choppy/sideways hai (trend efficiency ' + er.toFixed(2) + '). Trend saaf nahi.');
+      if (er < (fl.erMin || 0.3)) return stop('Market is choppy/sideways (trend efficiency ' + er.toFixed(2) + '). No clear trend.');
     }
     const extLimit = symbol === 'BANKNIFTY' ? 0.007 : 0.005;
     if (Math.abs(spot - ema20) / spot > extLimit) {
-      return stop('Price EMA20 se bahut door hai (extended). Pullback ka wait karo, chase mat karo.');
+      return stop('Price is too far from EMA20 (extended). Wait for a pullback, do not chase.');
     }
     if (inp.indexOnly) {
       const l3 = c5.slice(-3);
@@ -148,23 +148,23 @@
       res.signal = { indexOnly: true, option: dir > 0 ? 'CE' : 'PE', dir, spot, invalidation: inv };
       return res;
     }
-    if (!chain || !chain.length) return stop('Option chain data nahi mila.');
+    if (!chain || !chain.length) return stop('Option chain data not available.');
     const roomLevel = dir > 0 ? resistance : support;
     if (roomLevel != null && Math.abs(roomLevel - spot) / spot < 0.003) {
-      return stop((dir > 0 ? 'Resistance ' : 'Support ') + roomLevel + ' bahut paas hai. Target ke liye jagah nahi.');
+      return stop((dir > 0 ? 'Resistance ' : 'Support ') + roomLevel + ' is too close. No room for the target.');
     }
 
     if (dte < 1) {
       const pin = chain.reduce((a, b) => ((b.ceOi || 0) + (b.peOi || 0) > (a.ceOi || 0) + (a.peOi || 0) ? b : a));
       if (Math.abs(pin.strike - spot) / spot < 0.0008) {
-        return stop('Expiry par spot ' + pin.strike + ' ke paas (sabse zyada OI). Pin risk, price wahin atak sakta hai.');
+        return stop('On expiry, spot is near ' + pin.strike + ' (highest OI). Pin risk: price may get stuck there.');
       }
     }
     const ivh = (inp.ivHistory || []).filter((x) => x > 0);
     if (atmIv != null && ivh.length >= 10) {
       const pct = Math.round((ivh.filter((x) => x < atmIv).length / ivh.length) * 100);
       res.snap.ivPct = pct;
-      if (pct >= 90) return stop('ATM IV apne recent history ke ' + pct + ' percentile par hai. Premium mehenga, IV girne par loss ho sakta hai.');
+      if (pct >= 90) return stop('ATM IV is at the ' + pct + 'th percentile of its recent history. Premium is expensive and an IV drop can cause losses.');
     }
     // Strike selection: ATM, or 1 strike OTM if ATM risk is above capital limit.
     const strikes = chain.map((r) => r.strike).sort((a, b) => a - b);
@@ -191,13 +191,13 @@
     const otm = otmStrike != null ? build(otmStrike, '1 Strike OTM') : null;
     let pick = atm;
     if ((!atm || atm.lots === 0) && otm && otm.lots > 0) pick = otm;
-    if (!pick) return stop('Strike filter pass nahi hua (delta kam, spread chauda, ya premium data nahi).');
+    if (!pick) return stop('No strike passed the filters (low delta, wide spread, or no premium data).');
 
     const p = pick.ltp;
     const last3 = c5.slice(-3);
     const invalid = dir > 0 ? Math.min(ema20, ...last3.map((x) => x.l)) : Math.max(ema20, ...last3.map((x) => x.h));
     res.noTrade = false;
-    res.reason = 'Setup clear hai (score ' + score + '/6).';
+    res.reason = 'Setup is clear (score ' + score + '/6).';
     res.signal = Object.assign(pick, {
       indexName: symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty',
       entryLo: r05(p), entryHi: r05(p * 1.02),
@@ -207,11 +207,11 @@
       validUntil: E.hhmm(Math.min(nm + 30, 885)),
       lotCost: pick.ltp * lotSize,
     });
-    if (vix != null && vix > 18) res.notes.push('VIX ' + vix.toFixed(1) + ' high hai. Size aadha rakho.');
-    if (pick.lots === 0 && maxRiskRs > 0) res.notes.push('Aapke risk limit mein 1 lot bhi fit nahi. Sirf dekhne ke liye, trade mat lo.');
-    res.notes.push('Index ' + (dir > 0 ? 'neeche' : 'upar') + ' ' + Math.round(invalid) + ' close kare to premium SL ka wait mat karo, nikal jao.');
-    res.notes.push('45 minute mein T1 ya move nahi mila to exit karo (theta).');
-    res.notes.push('T1 pe aadha profit book karo, baaki ka SL entry pe laa do.');
+    if (vix != null && vix > 18) res.notes.push('VIX ' + vix.toFixed(1) + ' is high. Use half size.');
+    if (pick.lots === 0 && maxRiskRs > 0) res.notes.push('Not even 1 lot fits your risk limit. For information only, do not take this trade.');
+    res.notes.push('If the index closes ' + (dir > 0 ? 'below' : 'above') + ' ' + Math.round(invalid) + ', exit without waiting for the premium SL.');
+    res.notes.push('If there is no move or T1 within 45 minutes, exit (theta).');
+    res.notes.push('Book half the profit at T1 and move the stop-loss to entry for the rest.');
     return res;
   };
 
@@ -221,13 +221,13 @@
     const budget = inp.budget || 0, doneToday = inp.doneToday || 0;
     const res = { noTrade: true, reason: '', signal: null };
     const stop = (w) => { res.reason = w; return res; };
-    if (!expiry || expiry !== E.istDate(nowMs)) return stop('Aaj expiry nahi hai. Zero-Hero sirf expiry din ke liye.');
+    if (!expiry || expiry !== E.istDate(nowMs)) return stop('Not an expiry day. Zero-Hero is for expiry day only.');
     const nm = E.istMin(nowMs);
-    if (nm < 780 || nm > 885) return stop('Zero-Hero window 1:00 se 2:45 PM hai. Abhi bahar hai.');
-    if (doneToday >= 1) return stop('Aaj ka 1 Zero-Hero trade ho chuka. Din mein sirf ek.');
-    if (!candles || !candles.length || !chain || !chain.length) return stop('Data nahi mila.');
+    if (nm < 780 || nm > 885) return stop('Zero-Hero window is 1:00 to 2:45 PM. Outside it right now.');
+    if (doneToday >= 1) return stop('Today\'s one Zero-Hero trade is already done. Only one per day.');
+    if (!candles || !candles.length || !chain || !chain.length) return stop('No data available.');
     const c5 = E.aggregate(candles, 5, nowMs);
-    if (c5.length < 20) return stop('Data kam hai.');
+    if (c5.length < 20) return stop('Not enough data.');
     const closes = c5.map((x) => x.c), n = closes.length;
     const e9 = E.ema(closes, 9), e20 = E.ema(closes, 20);
     const ema9 = e9[n - 1], ema20 = e20[n - 1];
@@ -236,7 +236,7 @@
     let dir = 0;
     if (spot > ema20 && ema9 > ema20 && spot >= dayHigh * (1 - 0.0007) && move >= 0.002) dir = 1;
     else if (spot < ema20 && ema9 < ema20 && spot <= dayLow * (1 + 0.0007) && move <= -0.002) dir = -1;
-    if (!dir) return stop('Din ke high/low par tez momentum nahi hai. Lottery ke liye breakout chahiye, abhi nahi.');
+    if (!dir) return stop('No strong momentum at the day high/low. The lottery needs a breakout; not now.');
     const strikes = chain.map((r) => r.strike).sort((a, b) => a - b);
     let ai = 0;
     strikes.forEach((k, i) => { if (Math.abs(k - spot) < Math.abs(strikes[ai] - spot)) ai = i; });
@@ -250,9 +250,9 @@
       if (delta != null && (Math.abs(delta) < 0.03 || Math.abs(delta) > 0.30)) continue;
       if (!best || Math.abs(ltp - 10) < Math.abs(best.ltp - 10)) best = { strike: st, ltp, key: dir > 0 ? row.ceKey : row.peKey, steps: k };
     }
-    if (!best) return stop('Sahi lottery strike nahi mila (premium Rs 4 se 25 ke beech).');
+    if (!best) return stop('No suitable lottery strike found (premium between Rs 4 and Rs 25).');
     const costLot = best.ltp * lotSize, lots = Math.floor(budget / costLot);
-    if (lots < 1) return stop('Budget Rs ' + Math.round(budget) + ' mein 1 lot (Rs ' + Math.round(costLot) + ') nahi aata. Budget badhao ya skip karo.');
+    if (lots < 1) return stop('Budget Rs ' + Math.round(budget) + ' cannot buy 1 lot (Rs ' + Math.round(costLot) + '). Increase the budget or skip.');
     res.noTrade = false;
     res.reason = 'Expiry momentum breakout.';
     res.signal = Object.assign(best, {

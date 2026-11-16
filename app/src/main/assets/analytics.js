@@ -51,12 +51,12 @@
     const warn = (t) => issues.push({ level: 'warn', text: t });
     const nm = E.istMin(inp.nowMs);
     const c = inp.candles || [];
-    if (!c.length) { bad('Aaj ke candles nahi mile.'); return { ok: false, block, issues, metrics: m }; }
+    if (!c.length) { bad('No candles for today.'); return { ok: false, block, issues, metrics: m }; }
     const lastT = c[c.length - 1].t;
     m.lastCandleAgeMin = Math.max(0, (inp.nowMs - (lastT + 60000)) / 60000);
     if (nm >= 560 && nm <= 935) {
-      if (m.lastCandleAgeMin > 3) bad('Data stale hai: last candle ' + m.lastCandleAgeMin.toFixed(1) + ' min purani.');
-      else if (m.lastCandleAgeMin > 2) warn('Data thoda late: ' + m.lastCandleAgeMin.toFixed(1) + ' min.');
+      if (m.lastCandleAgeMin > 3) bad('Data is stale: last candle is ' + m.lastCandleAgeMin.toFixed(1) + ' min old.');
+      else if (m.lastCandleAgeMin > 2) warn('Data slightly delayed: ' + m.lastCandleAgeMin.toFixed(1) + ' min.');
     }
     let missing = 0, missingRecent = 0;
     for (let i = 1; i < c.length; i++) {
@@ -64,29 +64,29 @@
       if (g > 0) { missing += g; if (inp.nowMs - c[i].t < 30 * 60000) missingRecent += g; }
     }
     m.missing = missing; m.missingRecent = missingRecent;
-    if (missingRecent >= 3) bad('Pichle 30 min mein ' + missingRecent + ' candles missing.');
-    else if (missing > 5) warn('Aaj ' + missing + ' candles missing.');
+    if (missingRecent >= 3) bad(missingRecent + ' candles missing in the last 30 min.');
+    else if (missing > 5) warn(missing + ' candles missing today.');
     const lastClose = c[c.length - 1].c;
     if (inp.spot) {
       m.spotVsCandle = Math.abs(inp.spot - lastClose) / inp.spot;
-      if (m.spotVsCandle > 0.003) bad('Spot aur last candle close mein ' + (m.spotVsCandle * 100).toFixed(2) + '% farq.');
-      else if (m.spotVsCandle > 0.0015) warn('Spot aur candle close mein ' + (m.spotVsCandle * 100).toFixed(2) + '% farq.');
+      if (m.spotVsCandle > 0.003) bad('Spot differs from last candle close by ' + (m.spotVsCandle * 100).toFixed(2) + '%.');
+      else if (m.spotVsCandle > 0.0015) warn('Spot differs from candle close by ' + (m.spotVsCandle * 100).toFixed(2) + '%.');
     }
     if (inp.chainSpot && inp.spot) {
       m.chainVsSpot = Math.abs(inp.chainSpot - inp.spot) / inp.spot;
-      if (m.chainVsSpot > 0.002) bad('Option chain ka spot stale lag raha hai (' + (m.chainVsSpot * 100).toFixed(2) + '% farq).');
+      if (m.chainVsSpot > 0.002) bad('Option chain spot looks stale (' + (m.chainVsSpot * 100).toFixed(2) + '% difference).');
     }
     if (inp.altSpot && inp.spot) {
       m.brokerDiff = Math.abs(inp.altSpot - inp.spot) / inp.spot;
-      if (m.brokerDiff > 0.001) bad('Upstox aur Angel ka spot match nahi (' + (m.brokerDiff * 100).toFixed(2) + '%).');
-      else if (m.brokerDiff > 0.0005) warn('Broker spot mein halka farq (' + (m.brokerDiff * 100).toFixed(2) + '%).');
+      if (m.brokerDiff > 0.001) bad('Upstox and Angel spot prices do not match (' + (m.brokerDiff * 100).toFixed(2) + '%).');
+      else if (m.brokerDiff > 0.0005) warn('Small spot difference between brokers (' + (m.brokerDiff * 100).toFixed(2) + '%).');
     }
-    if (inp.vix == null) warn('India VIX nahi mila.');
+    if (inp.vix == null) warn('India VIX not available.');
     if (inp.chain && inp.chain.length && inp.spot) {
       const near = inp.chain.filter((r) => Math.abs(r.strike - inp.spot) / inp.spot < 0.01);
       const zero = near.filter((r) => !(r.ceLtp > 0) || !(r.peLtp > 0)).length;
       m.zeroLtp = zero;
-      if (near.length && zero / near.length > 0.4) warn('Paas ke kai strikes ka LTP 0 hai (illiquid ya data issue).');
+      if (near.length && zero / near.length > 0.4) warn('Several nearby strikes have LTP 0 (illiquid or a data issue).');
     }
     return { ok: !block, block, issues, metrics: m };
   };
