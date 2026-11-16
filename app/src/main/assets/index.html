@@ -169,6 +169,7 @@ document.querySelectorAll('nav button').forEach((b) => b.onclick = () => {
   if (b.dataset.t === 'jr') renderJournal();
   if (b.dataset.t === 'pp') renderPaper();
   if (b.dataset.t === 'ch') chartStart(); else chartStop();
+  if (b.dataset.t === 'sig') showLast(false);
 });
 document.querySelectorAll('#seg button').forEach((b) => b.onclick = () => {
   sym = b.dataset.s;
@@ -441,8 +442,10 @@ async function run(demo) {
     last = { r: x.r, d: x.d };
     if (!x.r.noTrade && !x.d.demo) logSignal(x.r.signal, sym, x.r.spot);
     render(x.r, x.d, x.maxRiskRs);
+    out.dataset.src = 'manual';
   } catch (e) {
     out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>';
+    out.dataset.src = 'manual';
   }
   go.disabled = false; $('demo').disabled = false;
 }
@@ -513,12 +516,13 @@ async function scanSymbol(s) {
   logSignal(sg, s, x.r.spot);
   if (!done.some((q) => q.key === key) && done.length < 2) {
     done.push({ key, t: hm(), tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, sym: s }); sv(notifKey(), done);
-    createPaper(sg, s);
-    sv('sb_last', { date: today(), time: hm(), r: x.r, d: { expiry: x.d.expiry, demo: false }, maxRiskRs: x.maxRiskRs });
+    const pt = createPaper(sg, s);
+    sv('sb_last', { date: today(), time: hm(), r: x.r, d: { expiry: x.d.expiry, demo: false, autoPaper: !!pt }, maxRiskRs: x.maxRiskRs });
     const cc = capCheck(sg);
     const txt = sg.strike + ' ' + sg.option + ' (' + sg.strikeType + ') | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | T1 ' + f2(sg.t1) +
       ' | ' + sg.lots + ' lot(s) | valid until ' + sg.validUntil + (cc.lvl !== 'ok' ? ' | CAPITAL RISK ' + cc.pct.toFixed(0) + '%!' : '');
     if (hasNative()) window.Native.notify('SIGNAL: ' + sg.indexName + ' ' + sg.option, txt);
+    if (curTab === 'sig') showLast(true); else refreshViews(); // show it right away, even if the app is open in the background
   }
   return nm + ': SIGNAL ' + sg.strike + ' ' + sg.option;
 }
@@ -541,7 +545,7 @@ async function autoTick() {
       }
     }
     autoMsg = 'Last check ' + hm() + ' | ' + lines.join(' | ');
-  } finally { scanning = false; setAutoUi(); if (curTab === 'ch') { chartRedraw(); chartSigList(); } }
+  } finally { scanning = false; setAutoUi(); refreshViews(); }
 }
 function startService() { if (hasNative() && !svcOn) { window.Native.startScan(); svcOn = true; } }
 function stopService() { if (hasNative() && svcOn) { window.Native.stopScan(); svcOn = false; } }
@@ -556,13 +560,29 @@ $('auto').onclick = () => {
 $('batt').onclick = () => { if (hasNative()) window.Native.batterySettings(); };
 setAutoUi();
 if (ld('sb_auto', false)) startAuto();
-(function showLast() {
-  const l = ld('sb_last', null);
-  if (l && l.date === today()) {
-    render(l.r, l.d, l.maxRiskRs);
-    $('out').insertAdjacentHTML('afterbegin', '<p class="note">Last signal from auto-scan (' + l.time + '). Tap Check signal again for fresh data.</p>');
-  }
-})();
+// Shows the latest auto-scan signal on the Signal tab. force = true when a brand-new signal just arrived;
+// otherwise a result the user is looking at from a manual check is left alone.
+function showLast(force) {
+  const l = ld('sb_last', null), out = $('out');
+  if (!l || l.date !== today()) return;
+  if (!force && out.textContent.trim() && out.dataset.src !== 'auto') return;
+  render(l.r, l.d, l.maxRiskRs);
+  out.dataset.src = 'auto';
+  out.insertAdjacentHTML('afterbegin', '<div class="card"><b>' + (force ? 'New signal from auto-scan at ' : 'Last signal from auto-scan at ') + l.time + '</b><p class="note">' +
+    (l.d.autoPaper ? 'A paper trade was started automatically (see the Paper tab).' : 'Paper trading is off in Settings, so no paper trade was created.') + ' Tap Check signal for fresh data.</p></div>');
+}
+// The app can stay open in the background while auto-scan works. Redraw whatever is on screen
+// when a scan finishes and when the app comes back to the foreground.
+function refreshViews() {
+  if (curTab === 'sig') showLast(false);
+  else if (curTab === 'pp') renderPaper();
+  else if (curTab === 'jr') renderJournal();
+  else if (curTab === 'ch') { chartRedraw(); chartSigList(); }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshViews(); });
+window.addEventListener('pageshow', refreshViews);
+window.addEventListener('focus', refreshViews);
+showLast(false);
 
 function render(r, d, maxRiskRs) {
   const s = r.signal, sn = r.snap;
@@ -589,7 +609,7 @@ function render(r, d, maxRiskRs) {
   }
   if (!r.noTrade) {
     h += '<div class="card"><b>Extra notes</b>' + r.notes.map((n) => '<p class="note">' + n + '</p>').join('') +
-      (d.demo ? '' : '<button class="btn" id="took">I took this trade (log in journal)</button><button class="btn ghost" id="ptook">Start paper trade</button>') + '</div>';
+      (d.demo ? '' : '<button class="btn" id="took">I took this trade (log in journal)</button>' + (d.autoPaper ? '<p class="note">Paper trade already started automatically.</p>' : '<button class="btn ghost" id="ptook">Start paper trade</button>')) + '</div>';
   }
   if (!r.noTrade) h += capCheck(s).html;
   if (d.health) {
