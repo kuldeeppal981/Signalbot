@@ -198,6 +198,9 @@ details summary{cursor:pointer;font-weight:700}
       <h3>8. Backtest</h3>
       <p class="note">Index level only (no option premium, no PCR). Entry at the next candle open, stop at invalidation (min 0.12%), target 2R, stop first if both hit in one candle, time stop 45 min, end of day 15:15. Results in R. The verdict uses the realised break-even win rate and the expectancy with its error range. 100+ trades are needed before judging.</p>
 
+      <h3>8b. Trade Watcher (real trades)</h3>
+      <p class="note">When you tap "I took this trade", the Journal trade is watched every minute (auto-scan on). Alerts: index crossed the invalidation level (exit now), stop-loss hit, fast premium drop (-12% in 5 min), Target 1 (book, move the stop to entry), breakeven stop after T1, no progress at 40 min, time exit at 45 min, market closing. It never places or changes orders. Put a stop-loss order at your broker right after entry: that is the real protection. You can enter your real fill price and the levels are recalculated.</p>
+
       <h3>9. Learning report and AI agent</h3>
       <p class="note">Journal tab: the Learning report finds patterns (time, CE/PE, score, VIX, execution, mistakes) and gives suggestions with sample sizes. It never changes the strategy by itself. The optional AI second-opinion agent (Settings) reviews a Tier A signal and says TAKE / WAIT / SKIP. It is advisory only: it cannot change size, stop-loss or place orders, and its opinions are compared with results in the report.</p>
 
@@ -217,8 +220,9 @@ details summary{cursor:pointer;font-weight:700}
 <script src="backtest.js"></script>
 <script src="learn.js"></script>
 <script src="agent.js"></script>
+<script src="watch.js"></script>
 <script>
-const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest, LN = window.Learn, AG = window.Agent, LC = window.LiveChart;
+const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest, LN = window.Learn, AG = window.Agent, WT = window.Watch, LC = window.LiveChart;
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -476,7 +480,26 @@ function shadowStep(t, ltp, now) {
   if (now - t.fillAt >= 45 * 60000) t.shDone = true;
 }
 const shadowRet = (t, v) => (t.sh && t.sh[v] ? -v : (t.shLast / t.fillPrice - 1) * 100);
+// Trade Watcher: real trades logged in the Journal. Alerts only, never orders.
+async function watchReal() {
+  const j = ld('sb_journal', []), open = j.filter((x) => x.exit == null && x.key && x.date === today());
+  if (!open.length) return 0;
+  for (const x of open) {
+    try {
+      const q = await api('/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(x.key), { ttl: TTL.optQuote });
+      const row = Object.values(q.data || {})[0];
+      if (!row || !(row.last_price > 0)) continue;
+      let spot = lastSpot[x.sym]; // fall back to the last known spot if the fresh index quote fails
+      try { const iq = await api('/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(KEYS[x.sym]), { ttl: TTL.quote }); const ir = Object.values(iq.data || {})[0]; if (ir && ir.last_price > 0) { spot = ir.last_price; lastSpot[x.sym] = spot; } } catch (e) {}
+      const res = WT.step(x, { ltp: row.last_price, spot }, Date.now());
+      res.alerts.forEach((a) => { if (hasNative()) window.Native.notify((a.level === 'bad' ? 'ACT NOW: ' : a.level === 'good' ? 'TARGET: ' : 'WATCH: ') + a.title, x.idx + ' ' + x.strike + ' ' + x.opt + ' | ' + a.text); });
+    } catch (e) { /* try again next minute */ }
+  }
+  sv('sb_journal', j); // the open items are the same objects, so watcher state is saved
+  return open.length;
+}
 async function manageTrades() {
+  try { await watchReal(); } catch (e) {}
   const l = paperList(), now0 = Date.now();
   const act = l.filter((t) => PP.ACTIVE.includes(t.state) || (t.state === 'CLOSED' && t.fillPrice && t.fillAt && !t.shDone && t.date === today() && now0 - t.fillAt < 50 * 60000));
   if (!act.length) return 0;
@@ -776,8 +799,10 @@ function render(r, d, maxRiskRs) {
   const tb = $('took');
   if (tb) tb.onclick = () => {
     const j = ld('sb_journal', []);
-    j.unshift({ id: Date.now(), date: today(), idx: s.indexName, opt: s.option, strike: s.strike, entry: s.ltp, sl: s.sl, t1: s.t1,
-      lots: Math.max(1, s.lots), lotSize: s.lotSize, exit: null });
+    j.unshift({ id: Date.now(), date: today(), idx: s.indexName, opt: s.option, strike: s.strike, entry: s.ltp, sl: s.sl, t1: s.t1, t2: s.t2,
+      lots: Math.max(1, s.lots), lotSize: s.lotSize, exit: null,
+      // for the Trade Watcher
+      key: s.key, sym: s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY', inv: s.indexInvalidation, createdAt: Date.now(), tier: s.tier || 'A' });
     sv('sb_journal', j); sv(cntKey(), ld(cntKey(), 0) + 1);
     tb.disabled = true; tb.textContent = 'Saved to journal';
   };
@@ -1110,6 +1135,8 @@ function renderJournal() {
   h += '<div class="card"><div class="j"><b>Learning report</b><span class="badge b-no">COACH</span></div>' +
     '<p class="note">The app studies your paper trades, journal tags and No-Trade reasons, finds patterns, and writes a report. It never changes the strategy by itself. Copy the report and send it to Claude to decide what to improve, then test any idea in Backtest first.</p>' +
     '<button class="btn" id="lngo">Generate report</button><div id="lnout"></div></div>';
+  const openW = j.filter((x) => x.exit == null && x.key && x.date === today());
+  if (openW.length) h += '<div class="card"><div class="j"><b>Trade Watcher</b><span class="badge b-up">ON</span></div><p class="note">Watching ' + openW.length + ' open trade(s) every minute while the app is running (auto-scan on). It only sends alerts. <b>Place a stop-loss order at your broker right after you enter</b>: that is the real protection, an alert can be late.</p><button class="btn ghost" id="wtnow">Check now</button></div>';
   const dl = ld(dlKey(), []);
   h += '<details class="card"><summary>Today\'s decision log (' + dl.length + ')</summary><p class="note">What the app decided on every scan. Reading the reason behind each "No Trade" is the best way to learn.</p>' +
     (dl.length ? dl.slice(0, 40).map((x) => '<div class="chk"><span>' + (x.sig ? '&#9650; ' : '') + (x.sym === 'NIFTY' ? 'Nifty' : 'BankN') + ': ' + esc(x.reason) + '</span><em>' + hmOf(x.first) + (x.n > 1 ? '-' + hmOf(x.last) + ' x' + x.n : '') + '</em></div>').join('') : '<p class="note">No scan has run yet today.</p>') + '</details>';
@@ -1130,6 +1157,12 @@ function renderJournal() {
     h += '<div class="card"><div class="j"><b>' + x.idx + ' ' + x.strike + ' ' + x.opt + '</b><span class="note">' + x.date + '</span></div>' +
       '<div class="note">Entry ' + f2(x.entry) + ' | SL ' + f2(x.sl) + ' | T1 ' + f2(x.t1) + ' | ' + x.lots + ' lot</div>';
     if (x.exit == null) {
+      if (x.key) {
+        const w = x.w || {};
+        h += '<div class="note" style="margin-top:6px"><b>Watching:</b> ' + WT.status(x, Date.now()) + '</div>' +
+          ((w.log || []).length ? (w.log || []).slice(-4).map((a) => '<div class="chk"><span><i class="dot ' + (a.level === 'bad' ? 'd' : a.level === 'good' ? 'u' : '') + '"></i>' + esc(a.title) + '</span><em>' + hmOf(a.t) + '</em></div>').join('') : '') +
+          '<div class="row" style="margin-top:8px"><input type="number" inputmode="decimal" id="en' + x.id + '" placeholder="My real entry price (optional)"><button class="btn ghost" style="width:auto;margin:0;padding:0 16px" data-en="' + x.id + '">Set entry</button></div>';
+      }
       h += '<div class="row" style="margin-top:8px"><input type="number" inputmode="decimal" id="ex' + x.id + '" placeholder="Exit price"><button class="btn" style="width:auto;margin:0;padding:0 16px" data-id="' + x.id + '">Close</button></div>';
     } else {
       h += '<div class="big ' + (pl(x) >= 0 ? 'pos' : 'neg') + '">' + inr(pl(x)) + '</div><div class="note">Exit ' + f2(x.exit) + '</div><div>' +
@@ -1138,6 +1171,12 @@ function renderJournal() {
     h += '</div>';
   });
   $('t-jr').innerHTML = h;
+  const wn = $('wtnow'); if (wn) wn.onclick = async () => { wn.textContent = 'Checking...'; try { await watchReal(); } catch (e) {} renderJournal(); };
+  $('t-jr').querySelectorAll('button[data-en]').forEach((b) => b.onclick = () => {
+    const v = parseFloat($('en' + b.dataset.en).value); if (!(v > 0)) return;
+    const arr = ld('sb_journal', []), it = arr.find((a) => String(a.id) === b.dataset.en);
+    if (it) { const r05 = (z) => Math.round(z * 20) / 20; it.entry = v; it.sl = r05(v * 0.75); it.t1 = r05(v * 1.5); it.t2 = r05(v * 1.75); if (it.w) { it.w.fired = {}; it.w.t1 = false; } sv('sb_journal', arr); renderJournal(); }
+  });
   $('lngo').onclick = () => {
     const rep = LN.analyze({ paper: paperList(), journal: ld('sb_journal', []), nt: ld('sb_nt', {}), cfg, now: Date.now(), shadow: SHADOW, shadowRet, journalNet });
     let o = '';
