@@ -88,7 +88,7 @@ class MainActivity : Activity() {
                 var out = ""
                 try {
                     val u = URL(url)
-                    if (u.protocol != "https" || u.host !in allowedHosts) throw IllegalArgumentException("blocked host")
+                    if (u.protocol != "https" || (u.host !in allowedHosts && !u.host.endsWith(".supabase.co"))) throw IllegalArgumentException("blocked host")
                     val c = u.openConnection() as HttpURLConnection
                     c.requestMethod = method
                     c.connectTimeout = 15000

@@ -15,7 +15,10 @@
 
   function stat(g) {
     const rs = g.map((t) => t.r), n = g.length, w = g.filter((t) => t.netPnl > 0).length;
-    return { n, win: n ? w * 100 / n : 0, avgR: mean(rs), se: n > 1 ? sd(rs) / Math.sqrt(n) : null, net: g.reduce((s, t) => s + t.netPnl, 0) };
+    const gw = rs.filter((r) => r > 0).reduce((a, r) => a + r, 0), gl = -rs.filter((r) => r < 0).reduce((a, r) => a + r, 0);
+    let cum = 0, peak = 0, dd = 0; // max drawdown in R, trades in time order
+    g.slice().sort((x, y) => (x.closedAt || x.fillAt || 0) - (y.closedAt || y.fillAt || 0)).forEach((t) => { cum += t.r; peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum); });
+    return { n, win: n ? w * 100 / n : 0, avgR: mean(rs), se: n > 1 ? sd(rs) / Math.sqrt(n) : null, net: g.reduce((s, t) => s + t.netPnl, 0), pf: gl > 0 ? gw / gl : null, maxDD: dd };
   }
   function group(list, keyFn) {
     const m = {};
@@ -142,6 +145,7 @@
     if (r.n) {
       line('Win rate ' + f1(r.all.win) + '% | avg R ' + sign(r.all.avgR) + (r.all.se != null ? ' +/- ' + f2(r.all.se) : '') + ' | net P&L Rs ' + Math.round(r.all.net));
       if (r.be != null) line('Avg win ' + f2(r.aw) + 'R, avg loss ' + f2(r.al) + 'R -> realised break-even win rate ' + f1(r.be) + '%');
+      line('Profit factor ' + (r.all.pf == null ? '- (no losses yet)' : f2(r.all.pf)) + ' | max drawdown ' + f2(r.all.maxDD) + 'R (' + 'peak-to-trough of cumulative R)');
       line('Charges Rs ' + Math.round(r.exec.charges) + ' vs gross Rs ' + Math.round(r.exec.gross) + ' | avg slippage ' + f2(r.exec.avgSlip) + '% | time/EOD exits ' + f1(r.exec.timeExitPct) + '%');
     }
     r.warnings.forEach((w) => line('WARNING: ' + w));

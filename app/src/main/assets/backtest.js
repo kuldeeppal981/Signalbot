@@ -9,12 +9,21 @@
   BT.simulateDay = function (candles, opts) {
     opts = Object.assign({ rr: 2, timeStopMin: 45, minRiskPct: 0.0012, maxSignals: 2, stride: 1, slipPts: 0, symbol: 'NIFTY' }, opts || {});
     const e = E(), out = [];
+    // 5-minute closes and EMA9, each known only AFTER its candle completes (no look-ahead). Used by the trail exit.
+    let c5 = null;
+    if (opts.trail) {
+      c5 = []; let cur = null, ema = null;
+      candles.forEach((b) => {
+        const m = e.istMin(b.t), bs = Math.floor(m / 5) * 5;
+        if (!cur || cur.bs !== bs) { if (cur) { ema = ema == null ? cur.c : ema + (cur.c - ema) * 2 / 10; c5.push({ done: cur.bs * 1 + 5, c: cur.c, ema }); } cur = { bs, c: b.c }; } else cur.c = b.c;
+      });
+    }
     let signals = 0, dayR = 0, consec = 0, lastLossT = null, nextIdx = 0, recent = [];
     for (let i = 0; i < candles.length - 1; i += 1) {
       if (i < nextIdx) continue;
       if (opts.stride > 1 && i % opts.stride) continue;
       const nowMs = candles[i].t + 60000, nm = e.istMin(nowMs);
-      if (nm < 570) continue;
+      if (nm < Math.max(570, opts.startMin || 0)) continue; // startMin: test later start times (e.g. 615 = 10:15)
       if (nm > 870) break;
       if (signals >= opts.maxSignals) break;
       const res = e.analyze({
@@ -29,13 +38,22 @@
       const risk = Math.max(Math.abs(entry - sg.invalidation), entry * opts.minRiskPct);
       const stop = entry - dir * risk, target = entry + dir * opts.rr * risk;
       const t0 = entryBar.t;
-      let exit = null, why = null, j = i + 1;
+      let exit = null, why = null, j = i + 1, curStop = stop, trailing = false;
       for (; j < candles.length; j++) {
         const b = candles[j];
-        const hitStop = dir > 0 ? b.l <= stop : b.h >= stop;
-        const hitTgt = dir > 0 ? b.h >= target : b.l <= target;
-        if (hitStop) { exit = stop; why = 'SL'; break; } // same-bar tie counts as stop (conservative)
+        const hitStop = dir > 0 ? b.l <= curStop : b.h >= curStop;
+        const hitTgt = !opts.trail && (dir > 0 ? b.h >= target : b.l <= target);
+        if (hitStop) { exit = curStop; why = trailing ? 'TRAIL' : 'SL'; break; } // same-bar tie counts as stop (conservative)
         if (hitTgt) { exit = target; why = 'TARGET'; break; }
+        if (opts.trail) {
+          // after +1R the stop moves to entry; then exit when a completed 5-min candle closes beyond EMA9 against the trade
+          if (!trailing && (dir > 0 ? b.h >= entry + risk : b.l <= entry - risk)) { trailing = true; curStop = entry; }
+          if (trailing) {
+            const nmj = e.istMin(b.t + 60000);
+            let k = -1; for (let q = c5.length - 1; q >= 0; q--) { if (c5[q].done <= nmj) { k = q; break; } }
+            if (k >= 0 && (dir > 0 ? c5[k].c < c5[k].ema : c5[k].c > c5[k].ema) && nmj % 5 === 0) { exit = b.c; why = 'TRAIL'; break; }
+          }
+        }
         const closeT = b.t + 60000;
         if (closeT - t0 >= opts.timeStopMin * 60000) { exit = b.c; why = 'TIME'; break; }
         if (e.istMin(closeT) >= 915) { exit = b.c; why = 'EOD'; break; }
@@ -119,6 +137,10 @@
     { name: '+ Sideways filter', flags: { regime: true } },
     { name: 'Both filters', flags: { confirm: true, regime: true } },
     { name: '+ Retest of opening range', flags: { retest: true } },
+    { name: 'Minimum score 5', flags: { minScore: 5 } },
+    { name: 'Start at 10:15 (not 9:30)', flags: {}, sim: { startMin: 615 } },
+    { name: 'EMA9 trail after +1R (45 min)', flags: {}, sim: { trail: true } },
+    { name: 'EMA9 trail after +1R (90 min)', flags: {}, sim: { trail: true, timeStopMin: 90 } },
   ];
   // Ablation: neutralise one droppable factor (EMA9/20, 15m trend, momentum) with the min score lowered by 1.
   BT.ABLATION = [
@@ -136,21 +158,22 @@
     for (const v of BT.VARIANTS) {
       const tin = [], tout = [];
       for (let i = 0; i < nd; i++) {
-        (i < cut ? tin : tout).push(...BT.simulateDay(days[W + i], Object.assign({}, opts, { flags: v.flags, prevAgg: pa[W + i] })));
+        (i < cut ? tin : tout).push(...BT.simulateDay(days[W + i], Object.assign({}, opts, v.sim || {}, { flags: v.flags, prevAgg: pa[W + i] })));
         if (tick && i % 4 === 0) await tick(v.name, i + 1, nd);
       }
       const f = (t) => { const st = A().stats(t.map((x) => ({ r: x.r }))); st.se = t.length > 1 ? sd(t.map((x) => x.r)) / Math.sqrt(t.length) : null; return st; };
-      rows.push({ name: v.name, flags: v.flags, inS: f(tin), outS: f(tout) });
+      rows.push({ name: v.name, flags: v.flags, sim: v.sim, inS: f(tin), outS: f(tout) });
     }
     const base = rows[0];
     // Verdict must beat noise: out-of-sample expectancy has to be > 2 standard errors above zero,
     // and better than baseline in BOTH halves. (3 variants are tried, so the bar is stricter than 1.65.)
+    const zBar = rows.length > 6 ? 2.5 : 2; // many variants are tried, so the bar is stricter (more chances to get lucky)
     rows.forEach((r, i) => {
       if (!i) { r.verdict = 'Reference'; return; }
       const z = r.outS.se ? r.outS.expR / r.outS.se : 0;
       r.z = z;
       if (r.outS.n < 25) r.verdict = 'Out-of-sample sample is small (' + r.outS.n + '). Not conclusive.';
-      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR && z >= 2) r.verdict = 'Better in both halves and above the noise. Worth keeping.';
+      else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR && z >= zBar) r.verdict = 'Better in both halves and above the noise. Worth keeping.';
       else if (r.inS.expR > base.inS.expR && r.outS.expR > base.outS.expR) r.verdict = 'Looks better, but within the ±error (could be noise). Not conclusive, needs more data.';
       else if (r.inS.expR > base.inS.expR) r.verdict = 'Better only on the older data. Likely overfit, do not use.';
       else r.verdict = 'Not better than the baseline.';

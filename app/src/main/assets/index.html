@@ -123,6 +123,15 @@ details summary{cursor:pointer;font-weight:700}
       <label for="sxon">Sensex (BSE) as a third index. Experimental</label>
       <select id="sxon"><option value="0">Off</option><option value="1">On</option></select>
       <p class="note">Uses the same rules. Lot size and expiry come from Upstox. There is no Angel One cross-check for Sensex. It adds more scans (more Upstox calls) and shares the same 2-signals-a-day limit. Check it in paper mode first. Sensex options can be less liquid, so watch the bid-ask spread.</p>
+      <label for="clon">Cloud sync (Supabase)</label>
+      <select id="clon"><option value="0">Off</option><option value="1">On</option></select>
+      <label for="clurl">Cloud URL</label>
+      <input id="clurl" type="text" autocomplete="off">
+      <label for="clkey">Cloud key (the INGEST_KEY secret you set in Supabase)</label>
+      <input id="clkey" type="password" autocomplete="off">
+      <button class="btn ghost" id="cltest">Test cloud connection</button>
+      <p class="note" id="clmsg"></p>
+      <p class="note">Uploads only: signals, paper trades, AI opinions, No-Trade counts and option-chain snapshots every 5 minutes. No Upstox token, Angel details or AI key is ever uploaded. If the phone is offline, batches wait and retry.</p>
       <label for="nwon">News / event agent (Claude + web search)</label>
       <select id="nwon"><option value="0">Off</option><option value="1">On</option></select>
       <p class="note">Shows today's events (RBI, results, global cues) in the Signal tab, once in the morning and when you tap the button (max 3 a day). Needs the Claude provider and key below, and web search enabled in your Anthropic Console. It costs a little per update (search + tokens). It is only context and a warning near event times. It never blocks or creates a trade, and it can be wrong, so verify important events.</p>
@@ -208,6 +217,9 @@ details summary{cursor:pointer;font-weight:700}
       <h3>8b. Trade Watcher (real trades)</h3>
       <p class="note">When you tap "I took this trade", the Journal trade is watched every minute (auto-scan on). Alerts: index crossed the invalidation level (exit now), stop-loss hit, fast premium drop (-12% in 5 min), Target 1 (book, move the stop to entry), breakeven stop after T1, no progress at 40 min, time exit at 45 min, market closing. It never places or changes orders. Put a stop-loss order at your broker right after entry: that is the real protection. You can enter your real fill price and the levels are recalculated.</p>
 
+      <h3>8d. Cloud sync</h3>
+      <p class="note">Optional (Settings). Uploads signals, paper trades, AI opinions, No-Trade counts and option-chain snapshots (every 5 min) to your own Supabase project, so the data survives a phone reset and can be analysed with long history. It never uploads your Upstox token, Angel details or AI key. Offline batches retry later.</p>
+
       <h3>8c. News agent</h3>
       <p class="note">Optional. Claude with web search lists today's events (RBI, results, macro data, global cues) in the Signal tab: once in the morning and on demand (max 3 a day). It is context only: a warning appears on a signal when a high/medium event is within 20 minutes, and the AI second opinion also sees it. It never blocks or creates a trade. It can be wrong or incomplete, so verify important events yourself.</p>
 
@@ -236,7 +248,7 @@ const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = w
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-let cfg = Object.assign({ token: '', capital: 20000, riskPct: 1, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false, flRetest: false, agOn: false, agProv: 'claude', agKey: '', agModel: '', agCap: 10, agNote: '', sensexOn: false, newsOn: false }, ld('sb_cfg', {}));
+let cfg = Object.assign({ token: '', capital: 20000, riskPct: 1, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false, flRetest: false, agOn: false, agProv: 'claude', agKey: '', agModel: '', agCap: 10, agNote: '', sensexOn: false, newsOn: false, cloudOn: false, cloudUrl: 'https://zakdsgnnyqpcvbliruwi.supabase.co/functions/v1/ingest', cloudKey: '' }, ld('sb_cfg', {}));
 let sym = 'NIFTY', last = null, curTab = 'sig';
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
@@ -479,7 +491,7 @@ function riskState(s) {
 }
 function createPaper(sg, s, r) {
   if (cfg.paperOn === false) return null;
-  const t = PP.create(sg, { sym: s }, Date.now());
+  const t = PP.create(sg, { sym: s }, Date.now()); setTimeout(cloudPaper, 50);
   t.tier = sg.tier || 'A'; t.strength = sg.strength == null ? null : sg.strength;
   if (r) { // remember the market context, so the Learning report can find patterns later
     const sn = r.snap || {}, ck = r.checks || [], pc = ck.find((c) => c.name === 'PCR');
@@ -543,7 +555,7 @@ async function manageTrades() {
       }
     } catch (e) { /* keep trade state, try next minute */ }
   }
-  savePaper(l);
+  savePaper(l); cloudPaper();
   return act.length;
 }
 const tbKey = () => 'sb_tb_' + today();
@@ -648,10 +660,10 @@ async function scanSymbol(s) {
         g.strike + ' ' + g.option + ' | Entry ' + f2(g.entryLo) + '-' + f2(g.entryHi) + ' | SL ' + f2(g.sl) + ' | T1 ' + f2(g.t1) + ' | ' + g.lots + ' lot | Max loss ' + inr(g.maxLoss));
     }
   }
-  dlog(s, x.r);
+  dlog(s, x.r); cloudChain(s, x.d, x.r); cloudCounts();
   if (x.r.noTrade) { await tierBScan(s, nm, x); return nm + ': No Trade'; }
   const sg = x.r.signal, key = s + sg.option + sg.strike, done = ld(notifKey(), []);
-  logSignal(sg, s, x.r.spot);
+  logSignal(sg, s, x.r.spot); cloudSignal(sg, s, x.r);
   if (!done.some((q) => q.key === key) && done.length < 2) {
     done.push({ key, t: hm(), tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, sym: s }); sv(notifKey(), done);
     const pt = createPaper(sg, s, x.r);
@@ -673,6 +685,66 @@ async function scanSymbol(s) {
 }
 /* ---------- AI second opinion (advisory only) ---------- */
 const agKey = () => 'sb_ag_' + today();
+/* ---------- Cloud sync (Supabase). Upload only: signals, paper trades, AI opinions, No-Trade counts, option-chain snapshots ---------- */
+const OUTBOX = 'sb_outbox';
+const cloudOk = () => !!(cfg.cloudOn && cfg.cloudKey && cfg.cloudUrl);
+let cloudBusy = false, cloudMsg = '';
+const cloudSeen = {}, cloudAt = {};
+function cloud(kind, rows) {
+  if (!cloudOk() || !rows || !rows.length) return;
+  const q = ld(OUTBOX, []); q.push({ kind, rows }); sv(OUTBOX, q.slice(-150));
+  cloudFlush();
+}
+async function cloudFlush() {
+  if (!cloudOk() || cloudBusy) return;
+  cloudBusy = true;
+  try {
+    for (;;) {
+      const q = ld(OUTBOX, []); if (!q.length) break;
+      const r = await nfetchRaw(cfg.cloudUrl, { 'Content-Type': 'application/json', 'x-app-key': cfg.cloudKey }, JSON.stringify(q[0]), 30000);
+      if (r.status >= 200 && r.status < 300) { q.shift(); sv(OUTBOX, q); cloudMsg = 'Synced ' + hm(); }
+      else if (r.status === 401 || r.status === 403) { cloudMsg = 'Cloud key rejected'; break; }
+      else if (r.status >= 400 && r.status < 500) { q.shift(); sv(OUTBOX, q); cloudMsg = 'Dropped a bad batch (' + r.status + ')'; }
+      else { cloudMsg = 'Server error ' + r.status + ', will retry'; break; }
+    }
+  } catch (e) { cloudMsg = 'Offline, will retry'; } finally { cloudBusy = false; }
+}
+const cloudIso = (ms) => new Date(ms || Date.now()).toISOString();
+function cloudSignal(sg, s, r) {
+  cloud('signals', [{ ts: cloudIso(), sym: s, tier: sg.tier || 'A', option: sg.option, strike: sg.strike, spot: r.spot, entry_lo: sg.entryLo, entry_hi: sg.entryHi, sl: sg.sl, t1: sg.t1, t2: sg.t2,
+    score: r.score, strength: sg.strength == null ? null : sg.strength, lots: sg.lots, ctx: { checks: (r.checks || []).map((c) => [c.name, c.v, c.t]), snap: r.snap || {}, invalidation: sg.indexInvalidation, delta: sg.delta, spreadPct: sg.spreadPct }, source: 'app' }]);
+}
+function cloudPaper() {
+  if (!cloudOk()) return;
+  const cut = E.istDate(Date.now() - 10 * 86400000), rows = [];
+  paperList().forEach((t) => {
+    if (t.date < cut) return;
+    const sig = JSON.stringify([t.state, t.fillPrice, t.qtyOpen, t.legs && t.legs.length, t.netPnl, t.agent && t.agent.verdict, t.shLast, t.shDone]);
+    if (cloudSeen[t.id] === sig) return; cloudSeen[t.id] = sig;
+    rows.push({ id: t.id, trade_date: t.date, sym: t.sym, tier: t.tier || 'A', state: t.state, r: t.r == null ? null : t.r, net_pnl: t.netPnl == null ? null : t.netPnl, data: t });
+  });
+  cloud('paper_trades', rows);
+}
+function cloudCounts() {
+  if (!cloudOk() || Date.now() - (cloudAt.counts || 0) < 5 * 60000) return;
+  cloudAt.counts = Date.now();
+  const nt = ld('sb_nt', {})[today()] || {};
+  cloud('decision_counts', Object.keys(nt).map((k) => ({ day: today(), sym: 'ALL', reason: k, n: nt[k] })));
+}
+function cloudChain(s, d, r) {
+  if (!cloudOk() || !d || !d.chain || d.demo || Date.now() - (cloudAt['ch' + s] || 0) < 5 * 60000) return;
+  cloudAt['ch' + s] = Date.now();
+  const sp = r && r.spot ? r.spot : d.spot, near = d.chain.slice().sort((a, b) => Math.abs(a.strike - sp) - Math.abs(b.strike - sp)).slice(0, 25).sort((a, b) => a.strike - b.strike);
+  cloud('chain_snapshots', [{ ts: cloudIso(), sym: s, spot: sp, vix: d.vix == null ? null : d.vix, expiry: d.expiry, chain: near.map((c) => ({ k: c.strike, cl: c.ceLtp, pl: c.peLtp, co: c.ceOi, po: c.peOi, ci: c.ceIv, pi: c.peIv, cd: c.ceDelta, pd: c.peDelta, cb: c.ceBid, ca: c.ceAsk, pb: c.peBid, pa: c.peAsk })) }]);
+}
+async function cloudTest() {
+  if (!cfg.cloudKey || !cfg.cloudUrl) return 'Enter the URL and the key first.';
+  try {
+    const r = await nfetchRaw(cfg.cloudUrl, { 'Content-Type': 'application/json', 'x-app-key': cfg.cloudKey }, JSON.stringify({ kind: 'ping' }), 20000);
+    return r.status === 200 ? 'Connected. Data will upload while Cloud sync is On.' : r.status === 401 ? 'The server says the key is wrong. It must match the INGEST_KEY secret you set in Supabase.' : 'Server answered ' + r.status + '.';
+  } catch (e) { return 'Could not connect: ' + e.message; }
+}
+
 /* ---------- News / event agent (Claude web search). Context and warnings only ---------- */
 const newsKey = () => 'sb_news_' + today();
 const newsRunsKey = () => 'sb_newsruns_' + today();
@@ -724,6 +796,7 @@ async function agentReview(sg, r, d, pt, s) {
   const op = res.opinion; op.t = Date.now();
   if (pt) { const l = paperList(), x = l.find((a) => a.id === pt.id); if (x) { x.agent = { verdict: op.verdict, confidence: op.confidence, reasons: op.reasons, t: op.t }; savePaper(l); } }
   const lg = ld('sb_agent', []); lg.unshift({ t: op.t, sym: s, option: sg.option, strike: sg.strike, verdict: op.verdict, conf: op.confidence, reasons: op.reasons, pid: pt ? pt.id : null }); sv('sb_agent', lg.slice(0, 200));
+  cloud('agent_opinions', [{ ts: cloudIso(op.t), sym: s, option: sg.option, strike: sg.strike, verdict: op.verdict, confidence: op.confidence, reasons: op.reasons, paper_trade_id: pt ? pt.id : null }]);
   return res;
 }
 // Tier B: weaker "setup forming" signals (score 3). Paper trade only, max 5 a day. Used to learn whether a lower threshold would work.
@@ -737,12 +810,13 @@ async function tierBScan(s, nm, x) {
     const sg = y.r.signal, a = tbList(), dirB = sg.option === 'CE' ? 1 : -1;
     if (a.some((q) => q.sym === s && q.dir === dirB && Date.now() - q.tMs < 30 * 60000) || paperList().some((t) => t.sym === s && t.tier === 'B' && PP.ACTIVE.includes(t.state))) return; // no duplicates / stacking
     a.push({ sym: s, key: s + sg.option + sg.strike, tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, strength: sg.strength }); sv(tbKey(), a);
-    createPaper(sg, s, y.r);
+    createPaper(sg, s, y.r); cloudSignal(sg, s, y.r);
     if (hasNative()) window.Native.notify('SETUP FORMING (paper only): ' + sg.indexName + ' ' + sg.option, sg.strike + ' ' + sg.option + ' | strength ' + sg.strength + '/100 | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | NOT a real-trade signal');
     if (curTab === 'pp') renderPaper();
   } catch (e) {}
 }
 async function autoTick() {
+  cloudFlush();
   if (scanning || !ld('sb_auto', false)) return;
   const now = Date.now(), nm = E.istMin(now), dow = new Date(now + 19800000).getUTCDay();
   if (dow === 0 || dow === 6) { autoMsg = 'Weekend, market closed. ' + hm(); return setAutoUi(); }
@@ -831,6 +905,7 @@ function render(r, d, maxRiskRs) {
     h += '<div class="card"><b>Extra notes</b>' + r.notes.map((n) => '<p class="note">' + n + '</p>').join('') +
       (d.demo ? '' : '<button class="btn" id="took">I took this trade (log in journal)</button>' + (d.autoPaper ? '<p class="note">Paper trade already started automatically.</p>' : '<button class="btn ghost" id="ptook">Start paper trade</button>')) + '</div>';
   }
+  if (!r.noTrade) h += '<div class="card"><b>Before you enter</b><p class="note">&#10003; Premium is still inside the entry zone (' + f2(s.entryLo) + ' - ' + f2(s.entryHi) + '). If it is higher, skip, do not chase.<br>&#10003; The index has not crossed ' + Math.round(s.indexInvalidation) + ' (' + (s.option === 'CE' ? 'below' : 'above') + ' means the idea is broken).<br>&#10003; Bid-ask spread is small' + (s.spreadPct != null ? ' (now ' + s.spreadPct.toFixed(1) + '%, limit 5%)' : '') + '.<br>&#10003; You will place a stop-loss order at your broker at ' + f2(s.sl) + ' right after entry.</p><p class="note"><b>Expected holding:</b> up to 45 minutes. Most of the move should show within 15-45 minutes. If neither the stop nor Target 1 is hit by then, exit (theta). Never hold past 3:15 PM.</p></div>';
   if (!r.noTrade) h += capCheck(s).html;
   if (!r.noTrade && d.agent) h += agentCard(d.agent);
   if (!r.noTrade && cfg.agOn && !d.demo) h += '<div id="agout"></div><button class="btn ghost" id="agask">Ask AI second opinion</button>';
@@ -1265,9 +1340,10 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('clon').value = cfg.cloudOn ? '1' : '0'; $('clurl').value = cfg.cloudUrl || ''; $('clkey').value = cfg.cloudKey || ''; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('cltest').onclick = async () => { cfg.cloudUrl = $('clurl').value.trim(); cfg.cloudKey = $('clkey').value.trim(); $('clmsg').textContent = 'Testing...'; $('clmsg').textContent = await cloudTest(); };
 $('save').onclick = () => {
-  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', cloudOn: $('clon').value === '1', cloudUrl: $('clurl').value.trim(), cloudKey: $('clkey').value.trim(), agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; guard.clear(); applySensex(); renderNews(); $('saved').textContent = 'Saved.';
 };
 </script>
