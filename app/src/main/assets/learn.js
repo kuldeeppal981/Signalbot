@@ -33,6 +33,7 @@
     const rep = { n: closed.length, missed: missed.length, created: paper.length, sections: [], suggestions: [], warnings: [] };
     const all = stat(closed);
     rep.all = all; rep.tierB = stat(closedB);
+    rep.agent = root.Agent ? root.Agent.compare(closed) : [];
 
     // break-even from realised winners/losers (same idea as the backtest verdict)
     const wins = closed.filter((t) => t.r > 0), loss = closed.filter((t) => t.r <= 0);
@@ -121,6 +122,8 @@
     }
     if (rep.tierB.n >= SOLID_N && rep.n >= 10 && rep.tierB.avgR > 0.1 && rep.tierB.avgR + 0.05 >= rep.all.avgR) add('Tier B setups perform like Tier A', 'Tier B ' + sign(rep.tierB.avgR) + 'R over ' + rep.tierB.n + ' trades vs Tier A ' + sign(rep.all.avgR) + 'R over ' + rep.n + '.', 'Backtest A/B: lower the minimum score to 3 and compare. Only then consider more signals per day.', rep.tierB.n);
     if (rep.tierB.n >= SOLID_N && rep.tierB.avgR < 0) add('Tier B setups lose', 'Tier B averages ' + sign(rep.tierB.avgR) + 'R over ' + rep.tierB.n + ' trades.', 'Do not lower the threshold. Keep Tier B as watch-only.', rep.tierB.n);
+    const ak = (rep.agent || []).find((g) => g.verdict === 'TAKE'), as = (rep.agent || []).filter((g) => g.verdict !== 'TAKE'), asn = as.reduce((a, g) => a + g.n, 0);
+    if (ak && ak.n >= 15 && asn >= 15) { const sa = as.reduce((a, g) => a + g.avgR * g.n, 0) / asn; if (ak.avgR - sa > 0.3) add('AI SKIP/WAIT calls avoided weaker trades', 'TAKE ' + sign(ak.avgR) + 'R (' + ak.n + ') vs SKIP/WAIT ' + sign(sa) + 'R (' + asn + ').', 'Consider following the AI veto in paper first, then in real trades. Keep size rules unchanged.', ak.n + asn); }
     if (!S.length) S.push({ title: 'No clear pattern yet', why: 'Nothing in the data passes the minimum-sample checks.', test: 'Keep paper trading. Re-run this report weekly.', n: rep.n, strength: 'n/a' });
 
     rep.text = L.toText(rep, data);
@@ -158,6 +161,10 @@
     line('4) REAL TRADES (journal) AND MISTAKES');
     line('Closed ' + r.journal.n + ' | net Rs ' + Math.round(r.journal.net) + ' | losses with a mistake tag ' + r.journal.lossWithMistake + '/' + r.journal.losses);
     Object.keys(r.journal.mistakes).forEach((k) => line('  ' + k + ': ' + r.journal.mistakes[k].n + ' trades, Rs ' + Math.round(r.journal.mistakes[k].pnl)));
+    line('');
+    line('4b) AI AGENT OPINION vs RESULT (Tier A paper trades; the paper trade runs whatever the AI said)');
+    if (r.agent && r.agent.length) r.agent.forEach((g) => line('  ' + g.verdict + ': n=' + g.n + ', win ' + f1(g.win) + '%, avg ' + sign(g.avgR) + 'R' + (g.n < MIN_N ? '  (too few)' : '')));
+    else line('  No AI opinions with closed trades yet.');
     line('');
     line('5) WHY THE APP SAID NO TRADE (' + r.nt.days + ' days, ' + r.nt.scans + ' scans)');
     r.nt.top.forEach((x) => line('  ' + x.n + 'x ' + x.r));

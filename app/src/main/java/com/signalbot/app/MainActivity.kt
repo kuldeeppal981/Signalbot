@@ -40,7 +40,9 @@ class MainActivity : Activity() {
         private val allowedHosts = setOf(
             "api.upstox.com",
             "apiconnect.angelone.in",
-            "apiconnect.angelbroking.com"
+            "apiconnect.angelbroking.com",
+            "api.anthropic.com",
+            "generativelanguage.googleapis.com"
         )
 
         @JavascriptInterface

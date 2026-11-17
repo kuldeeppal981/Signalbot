@@ -118,6 +118,19 @@ details summary{cursor:pointer;font-weight:700}
       <select id="zhon"><option value="0">Off</option><option value="1">On</option></select>
       <label for="zhb">Zero-Hero budget per trade (Rs). 0 = 1% of capital</label>
       <input id="zhb" type="number" inputmode="numeric">
+      <label for="agon">AI second-opinion agent (advisory only)</label>
+      <select id="agon"><option value="0">Off</option><option value="1">On</option></select>
+      <label for="agprov">AI provider</label>
+      <select id="agprov"><option value="claude">Claude (Anthropic)</option><option value="gemini">Gemini (Google)</option></select>
+      <label for="agkey">AI API key</label>
+      <input id="agkey" type="password" autocomplete="off">
+      <label for="agmodel">AI model (blank = default)</label>
+      <input id="agmodel" type="text" autocomplete="off" placeholder="claude-haiku-5-5 / gemini-2.5-flash">
+      <label for="agcap">Max AI calls per day</label>
+      <input id="agcap" type="number" inputmode="numeric">
+      <label for="agnote">Note for the AI about today (events, news). Optional</label>
+      <input id="agnote" type="text" autocomplete="off" placeholder="e.g. RBI policy at 10 AM">
+      <p class="note">The AI only reviews signals the rules already produced and says TAKE / WAIT / SKIP. It never changes size, stop-loss or places orders. The key stays on this phone and is sent only to the provider you pick. Market data is sent, your capital and account details are not. Use a key with a small credit limit.</p>
       <label for="flc">Filter: breakout candle-close confirmation</label>
       <select id="flc"><option value="0">Off</option><option value="1">On</option></select>
       <label for="flr">Filter: sideways/choppy market block</label>
@@ -151,12 +164,13 @@ details summary{cursor:pointer;font-weight:700}
 <script src="paper.js"></script>
 <script src="backtest.js"></script>
 <script src="learn.js"></script>
+<script src="agent.js"></script>
 <script>
-const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest, LN = window.Learn, LC = window.LiveChart;
+const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = window.Backtest, LN = window.Learn, AG = window.Agent, LC = window.LiveChart;
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-let cfg = Object.assign({ token: '', capital: 20000, riskPct: 1, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false, flRetest: false }, ld('sb_cfg', {}));
+let cfg = Object.assign({ token: '', capital: 20000, riskPct: 1, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false, flRetest: false, agOn: false, agProv: 'claude', agKey: '', agModel: '', agCap: 10, agNote: '' }, ld('sb_cfg', {}));
 let sym = 'NIFTY', last = null, curTab = 'sig';
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
@@ -183,6 +197,7 @@ window.__nativeCb = (id, status, b64) => {
   const p = pending[id]; if (!p) return; delete pending[id];
   let body = '';
   try { body = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))); } catch (e) {}
+  if (p.raw) return status < 0 ? p.rej(new Error('Network error: ' + body)) : p.res({ status, body });
   if (status < 0) return p.rej(new Error('Network error: ' + body));
   let j = null; try { j = JSON.parse(body); } catch (e) {}
   if (status === 401) return p.rej(new Error('Token is invalid or expired. Enter a new token in Settings.'));
@@ -199,6 +214,14 @@ const nfetch = (method, url, headers, body) => new Promise((res, rej) => {
   pending[id] = { res, rej };
   window.Native.fetch(id, method, url, JSON.stringify(headers || {}), body || '');
   setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('Timeout. Check your internet connection.')); } }, 30000);
+});
+// Raw call for the AI agent: returns {status, body} for any HTTP status (the Upstox path above turns errors into Upstox messages).
+const nfetchRaw = (url, headers, body) => new Promise((res, rej) => {
+  if (!window.Native) return rej(new Error('This app must run inside the Android APK.'));
+  const id = Math.random().toString(36).slice(2);
+  pending[id] = { res, rej, raw: true };
+  window.Native.fetch(id, 'POST', url, JSON.stringify(headers || {}), body || '');
+  setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('The AI did not answer in 30 seconds.')); } }, 30000);
 });
 // Every Upstox call goes through the guard: shared cache, spacing, budget, 429 backoff.
 const guard = window.Guard.create({ send: (path) => nfetch('GET', 'https://api.upstox.com' + path,
@@ -543,8 +566,37 @@ async function scanSymbol(s) {
       ' | ' + sg.lots + ' lot(s) | valid until ' + sg.validUntil + (cc.lvl !== 'ok' ? ' | CAPITAL RISK ' + cc.pct.toFixed(0) + '%!' : '');
     if (hasNative()) window.Native.notify('SIGNAL: ' + sg.indexName + ' ' + sg.option, txt);
     if (curTab === 'sig') showLast(true); else refreshViews(); // show it right away, even if the app is open in the background
+    if (cfg.agOn && pt) agentReview(sg, x.r, x.d, pt, s).then((res) => {
+      if (!res || !res.ok) return;
+      const op = res.opinion, sl = ld('sb_last', null);
+      if (sl && sl.r && sl.r.signal && sl.r.signal.strike === sg.strike && sl.r.signal.option === sg.option) { sl.d = Object.assign({}, sl.d, { agent: op }); sv('sb_last', sl); }
+      if (hasNative()) window.Native.notify('AI second opinion: ' + op.verdict + ' (' + sg.indexName + ' ' + sg.option + ')', 'AI confidence ' + op.confidence + '/100 | ' + (op.reasons[0] || '') + ' | Advisory only');
+      refreshViews();
+    }).catch(() => {});
   }
   return nm + ': SIGNAL ' + sg.strike + ' ' + sg.option;
+}
+/* ---------- AI second opinion (advisory only) ---------- */
+const agKey = () => 'sb_ag_' + today();
+function agentCard(op) {
+  const cls = op.verdict === 'TAKE' ? 'b-up' : op.verdict === 'SKIP' ? 'b-dn' : 'b-no';
+  return '<div class="card"><div class="j"><b>AI second opinion</b><span class="badge ' + cls + '">' + op.verdict + '</span></div>' +
+    '<p class="note">AI confidence ' + op.confidence + '/100 (how sure the AI is, not a win probability)</p>' +
+    (op.reasons || []).map((t) => '<p class="note">&bull; ' + esc(t) + '</p>').join('') +
+    ((op.risks || []).length ? '<p class="note"><b>Risks:</b> ' + (op.risks || []).map(esc).join('; ') + '</p>' : '') +
+    '<p class="note">Advisory only. The rules decide size and risk. Opinions are logged and compared with results in the Learning report.</p></div>';
+}
+async function agentReview(sg, r, d, pt, s) {
+  if (!cfg.agOn) return { ok: false, error: 'AI agent is off in Settings.' };
+  const used = ld(agKey(), 0), cap = cfg.agCap > 0 ? cfg.agCap : 10;
+  if (used >= cap) return { ok: false, error: 'Daily AI call limit reached (' + cap + '). Change it in Settings.' };
+  sv(agKey(), used + 1);
+  const res = await AG.ask(cfg, AG.snapshot(Object.assign({}, r, { signal: sg }), d, { note: cfg.agNote, nowMs: Date.now() }), nfetchRaw);
+  if (!res.ok) return res;
+  const op = res.opinion; op.t = Date.now();
+  if (pt) { const l = paperList(), x = l.find((a) => a.id === pt.id); if (x) { x.agent = { verdict: op.verdict, confidence: op.confidence, reasons: op.reasons, t: op.t }; savePaper(l); } }
+  const lg = ld('sb_agent', []); lg.unshift({ t: op.t, sym: s, option: sg.option, strike: sg.strike, verdict: op.verdict, conf: op.confidence, reasons: op.reasons, pid: pt ? pt.id : null }); sv('sb_agent', lg.slice(0, 200));
+  return res;
 }
 // Tier B: weaker "setup forming" signals (score 3). Paper trade only, max 5 a day. Used to learn whether a lower threshold would work.
 async function tierBScan(s, nm, x) {
@@ -649,6 +701,8 @@ function render(r, d, maxRiskRs) {
       (d.demo ? '' : '<button class="btn" id="took">I took this trade (log in journal)</button>' + (d.autoPaper ? '<p class="note">Paper trade already started automatically.</p>' : '<button class="btn ghost" id="ptook">Start paper trade</button>')) + '</div>';
   }
   if (!r.noTrade) h += capCheck(s).html;
+  if (!r.noTrade && d.agent) h += agentCard(d.agent);
+  if (!r.noTrade && cfg.agOn && !d.demo) h += '<div id="agout"></div><button class="btn ghost" id="agask">Ask AI second opinion</button>';
   if (d.health) {
     const hh = d.health, m = hh.metrics || {};
     h += '<div class="card"><div class="j"><b>Data health</b><span class="badge ' + (hh.ok ? (hh.issues.length ? 'b-no' : 'b-up') : 'b-dn') + '">' + (hh.ok ? (hh.issues.length ? 'WARN' : 'OK') : 'BAD') + '</span></div>' +
@@ -674,6 +728,13 @@ function render(r, d, maxRiskRs) {
       lots: Math.max(1, s.lots), lotSize: s.lotSize, exit: null });
     sv('sb_journal', j); sv(cntKey(), ld(cntKey(), 0) + 1);
     tb.disabled = true; tb.textContent = 'Saved to journal';
+  };
+  const agb = $('agask');
+  if (agb) agb.onclick = async () => {
+    agb.disabled = true; agb.textContent = 'Asking...';
+    const res = await agentReview(s, r, d, null, s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY');
+    $('agout').innerHTML = res.ok ? agentCard(res.opinion) : '<p class="note">' + esc(res.error) + '</p>';
+    agb.disabled = false; agb.textContent = 'Ask again';
   };
   const pt = $('ptook');
   if (pt) pt.onclick = () => {
@@ -1057,9 +1118,9 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
-  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; guard.clear(); $('saved').textContent = 'Saved.';
 };
 </script>
