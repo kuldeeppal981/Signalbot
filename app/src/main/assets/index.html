@@ -311,7 +311,7 @@ function dlog(s, r) {
   sv(dlKey(), a.slice(0, 250));
   // long-term count of why the app said No Trade (kept 60 days, used by the Learning report)
   if (r.noTrade) {
-    const nt = ld('sb_nt', {}), d = today(), k = String(r.reason || '?').replace(/[0-9]+(\.[0-9]+)?/g, '#').slice(0, 90);
+    const nt = ld('sb_nt', {}), d = today(), k = String(r.reason || '?').replace(/-?[0-9]+(\.[0-9]+)?/g, '#').slice(0, 90);
     nt[d] = nt[d] || {}; nt[d][k] = (nt[d][k] || 0) + 1;
     const keep = Object.keys(nt).sort().slice(-60), o = {}; keep.forEach((x) => (o[x] = nt[x]));
     sv('sb_nt', o);
@@ -361,7 +361,7 @@ const journalNet = (x) => { const q = x.lots * x.lotSize; return (x.exit - x.ent
 function closedToday() {
   const out = [];
   ld('sb_journal', []).filter((x) => x.date === today() && x.exit != null).forEach((x) => out.push({ t: x.closedAt || x.id, pnl: journalNet(x) }));
-  paperList().filter((x) => x.date === today() && x.state === 'CLOSED').forEach((x) => out.push({ t: x.closedAt, pnl: x.netPnl }));
+  paperList().filter((x) => x.date === today() && x.state === 'CLOSED' && x.tier !== 'B').forEach((x) => out.push({ t: x.closedAt, pnl: x.netPnl }));
   return out.sort((a, b) => a.t - b.t);
 }
 function riskState(s) {
@@ -370,17 +370,18 @@ function riskState(s) {
   const last = cl[cl.length - 1], nm = s === 'NIFTY' ? 'Nifty' : 'Bank Nifty';
   const recent = [];
   ld(notifKey(), []).forEach((q) => { if (q.sym === s && q.tMs) recent.push({ dir: q.dir, t: q.tMs }); });
-  paperList().filter((x) => x.date === today() && x.sym === s).forEach((x) => recent.push({ dir: x.dir, t: x.createdAt }));
+  paperList().filter((x) => x.date === today() && x.sym === s && x.tier !== 'B').forEach((x) => recent.push({ dir: x.dir, t: x.createdAt }));
   return {
     consecLosses: consec, dayPnl: cl.reduce((a, b) => a + b.pnl, 0) - ld(zhRiskKey(), 0),
     lastLossAgoMin: last && last.pnl < 0 ? (Date.now() - last.t) / 60000 : null,
-    openForSymbol: paperList().some((t) => t.sym === s && PP.ACTIVE.includes(t.state)) || ld('sb_journal', []).some((x) => x.date === today() && x.idx === nm && x.exit == null),
+    openForSymbol: paperList().some((t) => t.sym === s && t.tier !== 'B' && PP.ACTIVE.includes(t.state)) || ld('sb_journal', []).some((x) => x.date === today() && x.idx === nm && x.exit == null),
     recentSignals: recent,
   };
 }
 function createPaper(sg, s, r) {
   if (cfg.paperOn === false) return null;
   const t = PP.create(sg, { sym: s }, Date.now());
+  t.tier = sg.tier || 'A'; t.strength = sg.strength == null ? null : sg.strength;
   if (r) { // remember the market context, so the Learning report can find patterns later
     const sn = r.snap || {}, ck = r.checks || [], pc = ck.find((c) => c.name === 'PCR');
     t.ctx = { score: r.score, vix: sn.vix == null ? null : sn.vix, pcr: sn.pcr == null ? null : sn.pcr, dte: sn.dte == null ? null : sn.dte, er: sn.er == null ? null : sn.er, ivPct: sn.ivPct == null ? null : sn.ivPct,
@@ -427,7 +428,9 @@ async function manageTrades() {
   savePaper(l);
   return act.length;
 }
-async function compute(s, demo) {
+const tbKey = () => 'sb_tb_' + today();
+const tbList = () => ld(tbKey(), []);
+async function compute(s, demo, tierB) {
   if (!demo && !cfg.token) throw new Error('First enter your Upstox token in Settings, or try the demo.');
   const d = demo ? demoData(s) : await loadLive(s);
   if (!demo && angelOn()) {
@@ -440,7 +443,11 @@ async function compute(s, demo) {
   const rk = demo ? { consecLosses: 0, dayPnl: 0, lastLossAgoMin: null, openForSymbol: false, recentSignals: [] } : riskState(s);
   const ivKey = 'sb_iv_' + s, ivStore = demo ? [] : ld(ivKey, []);
   const signalsToday = demo ? 0 : Math.max(ld(cntKey(), 0), ld(notifKey(), []).length);
-  const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
+  if (tierB) { // Tier B only looks at other Tier B setups, so it never blocks or counts against real (Tier A) signals
+    rk.openForSymbol = paperList().some((t) => t.sym === s && t.tier === 'B' && PP.ACTIVE.includes(t.state));
+    rk.recentSignals = tbList().filter((q) => q.sym === s).map((q) => ({ dir: q.dir, t: q.tMs }));
+  }
+  const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
   if (!demo && (d.warmErr || !(d.prevCandles && d.prevCandles.length))) r.notes.unshift('EMA warm-up history unavailable' + (d.warmErr ? ' (' + d.warmErr + ')' : '') + ': EMAs use today\'s candles only, so early-session signals are less reliable.');
   if (d.angelErr) r.notes.unshift('Angel cross-check failed (' + d.angelErr + '). Running on Upstox data only.');
@@ -524,7 +531,7 @@ async function scanSymbol(s) {
     }
   }
   dlog(s, x.r);
-  if (x.r.noTrade) return nm + ': No Trade';
+  if (x.r.noTrade) { await tierBScan(s, nm, x); return nm + ': No Trade'; }
   const sg = x.r.signal, key = s + sg.option + sg.strike, done = ld(notifKey(), []);
   logSignal(sg, s, x.r.spot);
   if (!done.some((q) => q.key === key) && done.length < 2) {
@@ -538,6 +545,22 @@ async function scanSymbol(s) {
     if (curTab === 'sig') showLast(true); else refreshViews(); // show it right away, even if the app is open in the background
   }
   return nm + ': SIGNAL ' + sg.strike + ' ' + sg.option;
+}
+// Tier B: weaker "setup forming" signals (score 3). Paper trade only, max 5 a day. Used to learn whether a lower threshold would work.
+async function tierBScan(s, nm, x) {
+  try {
+    if (cfg.paperOn === false || cfg.tierB === false || x.d.demo) return;
+    if (tbList().length >= 5) return;
+    if (/Outside|before 9:30|after 2:30|Data health|expiry day|Daily loss|VIX/.test(x.r.reason)) return; // do not look when a hard gate is closed
+    const y = await compute(s, false, true);
+    if (y.r.noTrade) return;
+    const sg = y.r.signal, a = tbList(), dirB = sg.option === 'CE' ? 1 : -1;
+    if (a.some((q) => q.sym === s && q.dir === dirB && Date.now() - q.tMs < 30 * 60000) || paperList().some((t) => t.sym === s && t.tier === 'B' && PP.ACTIVE.includes(t.state))) return; // no duplicates / stacking
+    a.push({ sym: s, key: s + sg.option + sg.strike, tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, strength: sg.strength }); sv(tbKey(), a);
+    createPaper(sg, s, y.r);
+    if (hasNative()) window.Native.notify('SETUP FORMING (paper only): ' + sg.indexName + ' ' + sg.option, sg.strike + ' ' + sg.option + ' | strength ' + sg.strength + '/100 | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | NOT a real-trade signal');
+    if (curTab === 'pp') renderPaper();
+  } catch (e) {}
 }
 async function autoTick() {
   if (scanning || !ld('sb_auto', false)) return;
@@ -608,6 +631,7 @@ function render(r, d, maxRiskRs) {
     const dn = s.option === 'PE';
     h += '<div class="big" style="color:var(--' + (dn ? 'dn' : 'up') + ')">' + s.indexName + ' ' + s.strike + ' ' + s.option + '</div>' +
       '<p class="note">' + s.strikeType + ' | Expiry ' + d.expiry + ' | Lot ' + s.lotSize + '</p>' +
+      (s.strength != null ? '<p class="note"><b>Setup strength ' + s.strength + '/100</b> (how many factors agree; this is NOT a win probability)</p>' : '') +
       '<div class="kv">' +
       '<span>Entry zone</span><span>' + f2(s.entryLo) + ' - ' + f2(s.entryHi) + '</span>' +
       '<span>Stop Loss</span><span class="neg">' + f2(s.sl) + '</span>' +
@@ -786,12 +810,13 @@ function shadowCard(l) {
   return '<div class="card"><b>Shadow SL: which stop is better?</b><div class="kv" style="margin-top:8px">' + rows + '</div><p class="note">Each paper trade is watched for 45 min after the fill, to see what the average return would have been with a different premium stop. Sampled once a minute, so approximate. ' + (sd.length < 20 ? 'Only ' + sd.length + ' trades so far, do not draw conclusions (need 20-30+).' : '') + '</p></div>';
 }
 function renderPaper() {
-  const l = paperList(), closed = l.filter((t) => t.state === 'CLOSED'), active = l.filter((t) => PP.ACTIVE.includes(t.state));
+  const l = paperList(), closed = l.filter((t) => t.state === 'CLOSED' && t.tier !== 'B'), closedB = l.filter((t) => t.state === 'CLOSED' && t.tier === 'B'), active = l.filter((t) => PP.ACTIVE.includes(t.state));
   const missed = l.filter((t) => t.state === 'MISSED').length;
   const st = AN.stats(closed.map((t) => ({ r: t.r, pnl: t.netPnl })));
   const ex = PP.execution(closed);
   let h = '<h1>Paper trading</h1><div class="card"><div class="row"><button class="btn ghost" style="margin:0" id="ppupd">Update now</button><button class="btn ghost" style="margin:0" id="ppclr">Clear</button></div><p class="note" id="ppmsg">A virtual trade is created as soon as a signal appears. Fills at the ask, exits at the bid, with charges. Updates every minute when auto-scan is on.</p></div>';
-  h += statsCard(st, 'Signal accuracy (after charges, in R)', true);
+  h += statsCard(st, 'Signal accuracy, Tier A (after charges, in R)', true);
+  if (closedB.length) { const sb = AN.stats(closedB.map((t) => ({ r: t.r, pnl: t.netPnl }))); h += statsCard(sb, 'Tier B (weaker setups, paper only)', false); }
   if (ex.n) {
     h += '<div class="card"><b>Execution validation</b><div class="kv" style="margin-top:8px">' +
       '<span>Avg slippage (fill vs signal)</span><span>' + ex.avgSlipPct.toFixed(2) + '%</span>' +
@@ -807,7 +832,7 @@ function renderPaper() {
     h += '<div class="card"><b>Open trades</b>' + active.map((t) => '<div class="chk"><span>' + t.idxName + ' ' + t.strike + ' ' + t.option + '</span><em>' + t.state + (t.fillPrice ? ' @ ' + f2(t.fillPrice) : '') + '</em></div>').join('') + '</div>';
   }
   if (l.length) {
-    h += '<div class="card"><b>Trades</b>' + l.slice(0, 15).map((t) => '<div class="chk"><span>' + t.date.slice(5) + ' ' + t.idxName + ' ' + t.strike + t.option + '<br><em>' + t.state + (t.exitWhy ? ' (' + t.exitWhy + ')' : '') + (t.fillPrice ? ' | fill ' + f2(t.fillPrice) + ' vs sig ' + f2(t.signalPrice) : '') + '</em></span><span class="' + (t.netPnl >= 0 ? 'pos' : 'neg') + '">' + (t.netPnl == null ? '' : inr(t.netPnl)) + '</span></div>').join('') + '</div>';
+    h += '<div class="card"><b>Trades</b>' + l.slice(0, 15).map((t) => '<div class="chk"><span>' + t.date.slice(5) + (t.tier === 'B' ? ' [B] ' : ' ') + t.idxName + ' ' + t.strike + t.option + '<br><em>' + t.state + (t.exitWhy ? ' (' + t.exitWhy + ')' : '') + (t.fillPrice ? ' | fill ' + f2(t.fillPrice) + ' vs sig ' + f2(t.signalPrice) : '') + '</em></span><span class="' + (t.netPnl >= 0 ? 'pos' : 'neg') + '">' + (t.netPnl == null ? '' : inr(t.netPnl)) + '</span></div>').join('') + '</div>';
   } else h += '<p class="note">No paper trades yet. They appear here when a signal comes or when you tap "Start paper trade".</p>';
   $('t-pp').innerHTML = h;
   $('ppupd').onclick = async () => { $('ppmsg').textContent = 'Updating...'; try { await manageTrades(); } catch (e) {} renderPaper(); };

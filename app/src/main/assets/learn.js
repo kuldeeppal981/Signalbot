@@ -26,11 +26,13 @@
   // data = { paper:[], journal:[], nt:{date:{reason:count}}, cfg:{}, now:ms, shadow:[25,33,40], shadowRet:fn }
   L.analyze = function (data) {
     const paper = data.paper || [], journal = data.journal || [], cfg = data.cfg || {};
-    const closed = paper.filter((t) => t.state === 'CLOSED' && t.r != null && isFinite(t.r) && t.fillAt);
+    const okT = (t) => t.state === 'CLOSED' && t.r != null && isFinite(t.r) && t.fillAt;
+    const closed = paper.filter((t) => okT(t) && t.tier !== 'B'); // Tier A only
+    const closedB = paper.filter((t) => okT(t) && t.tier === 'B');
     const missed = paper.filter((t) => t.state === 'MISSED');
     const rep = { n: closed.length, missed: missed.length, created: paper.length, sections: [], suggestions: [], warnings: [] };
     const all = stat(closed);
-    rep.all = all;
+    rep.all = all; rep.tierB = stat(closedB);
 
     // break-even from realised winners/losers (same idea as the backtest verdict)
     const wins = closed.filter((t) => t.r > 0), loss = closed.filter((t) => t.r <= 0);
@@ -117,6 +119,8 @@
       const top = rep.nt.top[0];
       if (top && top.n / rep.nt.scans > 0.5) add('One gate blocks most scans', '"' + top.r + '" caused ' + Math.round(top.n * 100 / rep.nt.scans) + '% of all No-Trade scans.', 'This is normal for a selective bot. Only loosen a gate if paper trades show the blocked setups would have worked, which we cannot see yet.', rep.nt.scans);
     }
+    if (rep.tierB.n >= SOLID_N && rep.n >= 10 && rep.tierB.avgR > 0.1 && rep.tierB.avgR + 0.05 >= rep.all.avgR) add('Tier B setups perform like Tier A', 'Tier B ' + sign(rep.tierB.avgR) + 'R over ' + rep.tierB.n + ' trades vs Tier A ' + sign(rep.all.avgR) + 'R over ' + rep.n + '.', 'Backtest A/B: lower the minimum score to 3 and compare. Only then consider more signals per day.', rep.tierB.n);
+    if (rep.tierB.n >= SOLID_N && rep.tierB.avgR < 0) add('Tier B setups lose', 'Tier B averages ' + sign(rep.tierB.avgR) + 'R over ' + rep.tierB.n + ' trades.', 'Do not lower the threshold. Keep Tier B as watch-only.', rep.tierB.n);
     if (!S.length) S.push({ title: 'No clear pattern yet', why: 'Nothing in the data passes the minimum-sample checks.', test: 'Keep paper trading. Re-run this report weekly.', n: rep.n, strength: 'n/a' });
 
     rep.text = L.toText(rep, data);
@@ -140,7 +144,9 @@
     r.warnings.forEach((w) => line('WARNING: ' + w));
     line('');
     const sec = (title, arr) => { if (!arr.length) return; line(title); arr.forEach((g) => line('  ' + g.k + ': n=' + g.n + ', win ' + f1(g.win) + '%, avg ' + sign(g.avgR) + 'R, net Rs ' + Math.round(g.net) + (g.n < MIN_N ? '  (too few)' : ''))); };
-    line('2) BREAKDOWNS');
+    line('Tier B (weaker setups, paper only): closed ' + r.tierB.n + (r.tierB.n ? ', win ' + f1(r.tierB.win) + '%, avg ' + sign(r.tierB.avgR) + 'R, net Rs ' + Math.round(r.tierB.net) : ''));
+    line('');
+    line('2) BREAKDOWNS (Tier A)');
     sec('By entry time:', r.by.hour); sec('By side:', r.by.side); sec('By index:', r.by.index); sec('By exit reason:', r.by.exit);
     sec('By expiry day:', r.by.expiry); sec('By score:', r.by.score); sec('By VIX:', r.by.vix); sec('By PCR:', r.by.pcr);
     line('');
@@ -160,8 +166,8 @@
     r.suggestions.forEach((s, i) => { line((i + 1) + '. ' + s.title + ' [' + s.strength + ', n=' + s.n + ']'); line('   Evidence: ' + s.why); line('   How to test: ' + s.test); });
     line('');
     const rows = (data.paper || []).filter((t) => t.state === 'CLOSED' && t.fillAt).slice(0, 60);
-    line('7) RAW CLOSED TRADES (latest ' + rows.length + '): date idx opt entryTime score vix R exit slip%');
-    rows.forEach((t) => { const c = t.ctx || {}; line([t.date, t.idxName, t.option, new Date(t.fillAt + 330 * 60000).toISOString().slice(11, 16), c.score == null ? '-' : c.score, c.vix == null ? '-' : f1(c.vix), f2(t.r), t.exitWhy, t.signalPrice > 0 ? f2(t.slippage / t.signalPrice * 100) : '-'].join(' ')); });
+    line('7) RAW CLOSED TRADES (latest ' + rows.length + '): date tier idx opt entryTime score vix R exit slip%');
+    rows.forEach((t) => { const c = t.ctx || {}; line([t.date, t.tier || 'A', t.idxName, t.option, new Date(t.fillAt + 330 * 60000).toISOString().slice(11, 16), c.score == null ? '-' : c.score, c.vix == null ? '-' : f1(c.vix), f2(t.r), t.exitWhy, t.signalPrice > 0 ? f2(t.slippage / t.signalPrice * 100) : '-'].join(' ')); });
     line('');
     line('Educational tool. Patterns from small samples are mostly luck. No accuracy is claimed.');
     return o.join('\n');

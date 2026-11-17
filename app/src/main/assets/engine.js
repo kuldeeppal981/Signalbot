@@ -122,7 +122,9 @@
     // Gates, in order. First failure = No Trade.
     if (nm < 570) return stop('No signals before 9:30. The opening range is still forming.');
     if (nm > 870) return stop('No new entries after 2:30 PM (theta and reversal risk).');
-    if (signalsToday >= 2) return stop('Already 2 signals today. Quality over quantity, try again tomorrow.');
+    const tierB = !!flg.tierB; // Tier B = weaker "setup forming" signal. Paper trading only, never a real-trade signal.
+    if (tierB) { if ((inp.tierBToday || 0) >= 5) return stop('Already 5 Tier B setups today.'); }
+    else if (signalsToday >= 2) return stop('Already 2 signals today. Quality over quantity, try again tomorrow.');
     if (inp.health && inp.health.block) return stop('Data health: ' + inp.health.block + ' Signal blocked.');
     if (inp.openForSymbol) return stop('There is already an open/pending trade on this index. No new signal (no stacking).');
     if (inp.lastLossAgoMin != null && inp.lastLossAgoMin < 15) return stop('Less than 15 minutes since the last loss. Cooling off to avoid revenge trading.');
@@ -136,7 +138,7 @@
         return stop('Upstox and Angel One spot prices do not match (' + spot.toFixed(1) + ' vs ' + inp.altSpot.toFixed(1) + '). Data cannot be trusted, No Trade.');
       }
     }
-    if (Math.abs(score) < (flg.minScore || 4) || orb !== dir || trendEma !== dir) {
+    if (tierB ? (Math.abs(score) < 3 || trendEma !== dir) : (Math.abs(score) < (flg.minScore || 4) || orb !== dir || trendEma !== dir)) {
       return stop('Setup is unclear (score ' + score + '/6). Trend, opening range and EMA do not all agree.');
     }
     const rs = inp.recentSignals || [];
@@ -230,8 +232,16 @@
     const last3 = c5.slice(-3);
     const invalid = dir > 0 ? Math.min(ema20, ...last3.map((x) => x.l)) : Math.max(ema20, ...last3.map((x) => x.h));
     res.noTrade = false;
-    res.reason = 'Setup is clear (score ' + score + '/6).';
+    res.reason = tierB ? 'Setup forming, Tier B (score ' + score + '/6). Paper trade only.' : 'Setup is clear (score ' + score + '/6).';
+    // Setup strength 0-100: how many factors agree and how clean the context is. NOT an accuracy or win probability.
+    let strength = Math.abs(score) / 6 * 60;
+    if (comps[2].v === dir) strength += 15;
+    if (comps[3].v === dir) strength += 10;
+    if (comps[4].v === dir) strength += 5;
+    if (vix != null && vix <= 18) strength += 5;
+    if (res.snap.er != null ? res.snap.er >= 0.3 : false) strength += 5;
     res.signal = Object.assign(pick, {
+      tier: tierB ? 'B' : 'A', strength: Math.min(100, Math.round(strength)),
       indexName: symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty',
       entryLo: r05(p), entryHi: r05(p * 1.02),
       sl: r05(p * 0.75), t1: r05(p * 1.5), t2: r05(p * 1.75),
