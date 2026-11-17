@@ -14,6 +14,7 @@ nav{display:flex;border-top:1px solid var(--line);background:var(--surf)}
 nav button{flex:1;padding:13px 0;background:none;border:0;color:var(--mut);font:600 10px system-ui;letter-spacing:0}
 nav button.on{color:var(--acc);box-shadow:inset 0 2px 0 var(--acc)}
 h1{font-size:18px;margin:0 0 12px}
+h3{font-size:14px;margin:14px 0 4px}
 .card{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
 .row{display:flex;gap:8px}
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:1}
@@ -152,6 +153,57 @@ details summary{cursor:pointer;font-weight:700}
       <button class="btn" id="save">Save</button>
       <p class="note" id="saved"></p>
     </div>
+
+    <details class="card" id="about">
+      <summary>About: strategy and calculations</summary>
+      <p class="note">Educational tool, not investment advice. No accuracy is claimed. Options buying is high risk and you can lose the whole premium. The edge of this strategy is NOT proven; validate with Backtest and paper trading first.</p>
+
+      <h3>1. What the app does</h3>
+      <p class="note">Nifty and Bank Nifty, CE or PE BUYING only, ATM or 1-strike OTM. Strict signals (Tier A): max 2 per day, and "No Trade" when unclear. Data: Upstox (main), Angel One (optional spot cross-check).</p>
+
+      <h3>2. Signal: 6-factor score (5-minute candles)</h3>
+      <p class="note">Each factor is +1 (bullish), -1 (bearish) or 0:<br>
+      1. Spot vs 5m EMA20<br>2. EMA9 vs EMA20 (5m)<br>3. Opening range breakout (9:15-9:30 high/low, 0.03% buffer)<br>4. 15m trend vs 15m EMA20<br>5. PCR: above 1.1 bullish, below 0.8 bearish<br>6. 3-candle momentum<br>
+      EMAs are warmed up with the previous sessions (days are never merged).<br>
+      <b>Tier A signal:</b> |score| &ge; 4 AND opening-range break agrees AND spot-vs-EMA20 agrees. Positive = CE, negative = PE.<br>
+      <b>Tier B ("setup forming"):</b> |score| &ge; 3 AND spot-vs-EMA20 agrees. Max 5 a day. PAPER ONLY, never a real-trade signal. It exists to learn whether a lower threshold would work.<br>
+      <b>Setup strength 0-100:</b> score x 10, +15 opening-range agrees, +10 15m trend agrees, +5 PCR agrees, +5 VIX &le; 18, +5 trending market. It is NOT a win probability.</p>
+
+      <h3>3. Gates (any one fails = No Trade)</h3>
+      <p class="note">Time window 9:30-14:30. Max 2 Tier A signals a day. No stacking while a trade is open. 15-min cooldown after a loss; stop after 2 losses in a row. Daily loss limit = 2 x risk per trade (Zero-Hero worst case included). Expiry day: no fresh buys after 1:30 PM. India VIX &le; 24. Angel vs Upstox spot difference &le; 0.1%. Duplicate-direction signal blocked for 30 min, opposite direction for 20 min. Data health check.<br>
+      Also: price not too far from EMA20 (0.5% Nifty / 0.7% Bank Nifty), no big OI wall within 0.3% of spot, expiry pin check (0.08%), IV percentile &le; 90, delta &ge; 0.40 (0.45 near expiry), bid-ask spread &le; 5%.<br>
+      Optional filters (Settings, off by default): breakout confirmation, sideways filter, retest of the opening range. Turn on only if the A/B test helps.</p>
+
+      <h3>4. Position size (the calculation)</h3>
+      <p class="note">Risk budget = capital x risk % (default 1%, max 5%)<br>
+      Risk per lot = 0.25 x option premium x lot size (because SL is -25%)<br>
+      Lots = floor(risk budget / risk per lot)<br>
+      If lots = 0 (even 1 lot risks more than your budget) = <b>No Trade</b>. The budget is never exceeded.<br>
+      Example: capital Rs 3,00,000, risk 1% = budget Rs 3,000. Premium 110, lot 75: risk per lot = 0.25 x 110 x 75 = Rs 2,062, so 1 lot.<br>
+      With small capital (Rs 5k-30k) 1 lot often risks more than the budget, so the app skips. Forcing a trade means over-risking.</p>
+
+      <h3>5. Trade levels</h3>
+      <p class="note">Entry zone: LTP to LTP x 1.02 (do not chase).<br>Stop loss: -25% of entry premium.<br>Target 1: +50%. Target 2: +75%. (Risk:reward 1:2 at T1.)<br>
+      Index invalidation: exit early if the index closes beyond EMA20 or the extreme of the last 3 candles against you.<br>
+      Time exit: 45 minutes after entry if neither SL nor target is hit.<br>
+      1 lot: exit fully at T1. 2+ lots: sell half (whole lots) at T1, move the stop to entry, rest to T2.<br>
+      Example: entry 100 gives SL 75, T1 150, T2 175. 1 lot of 75: loss at SL = Rs 1,875, gain at T1 = Rs 3,750 (before charges).</p>
+
+      <h3>6. Zero-Hero (expiry day only, Off by default)</h3>
+      <p class="note">1:00-2:45 PM, cheap far-OTM option, notification only, one per day, budget default 1% of capital, counted in the daily risk limit. Very high risk, it usually expires worthless.</p>
+
+      <h3>7. Paper trading</h3>
+      <p class="note">A virtual trade starts when a signal appears. States: pending, open, partial, closed, missed. Fills at the ask, exits at the bid, charges included. Shadow stops (25/33/40%) are watched for 45 min to learn if the stop is too tight. Tier A and Tier B are tracked separately.</p>
+
+      <h3>8. Backtest</h3>
+      <p class="note">Index level only (no option premium, no PCR). Entry at the next candle open, stop at invalidation (min 0.12%), target 2R, stop first if both hit in one candle, time stop 45 min, end of day 15:15. Results in R. The verdict uses the realised break-even win rate and the expectancy with its error range. 100+ trades are needed before judging.</p>
+
+      <h3>9. Learning report and AI agent</h3>
+      <p class="note">Journal tab: the Learning report finds patterns (time, CE/PE, score, VIX, execution, mistakes) and gives suggestions with sample sizes. It never changes the strategy by itself. The optional AI second-opinion agent (Settings) reviews a Tier A signal and says TAKE / WAIT / SKIP. It is advisory only: it cannot change size, stop-loss or place orders, and its opinions are compared with results in the report.</p>
+
+      <h3>10. Honest limits</h3>
+      <p class="note">The backtest covers only the index core; option-level filters are tested by paper trading. Small samples are mostly luck. Backtest is not live: slippage, psychology and market changes matter. Paper trade for 4-12 weeks before real money. Never risk money you cannot afford to lose.</p>
+    </details>
   </section>
 </main>
 <nav><button class="on" data-t="sig">SIGNAL</button><button data-t="ch">CHART</button><button data-t="pp">PAPER</button><button data-t="bt">BACKTEST</button><button data-t="jr">JOURNAL</button><button data-t="st">SETTINGS</button></nav>
