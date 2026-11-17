@@ -99,6 +99,7 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note" id="btstat"></p>
     </div>
     <div id="btout"></div>
+    <div id="btlog" style="margin-top:14px"></div>
   </section>
   <section id="t-jr" class="hide"></section>
   <section id="t-st" class="hide">
@@ -219,6 +220,9 @@ details summary{cursor:pointer;font-weight:700}
 
       <h3>8d. Cloud sync</h3>
       <p class="note">Optional (Settings). Uploads signals, paper trades, AI opinions, No-Trade counts and option-chain snapshots (every 5 min) to your own Supabase project, so the data survives a phone reset and can be analysed with long history. It never uploads your Upstox token, Angel details or AI key. Offline batches retry later.</p>
+
+      <h3>8e. Saved backtests</h3>
+      <p class="note">Every Backtest, A/B test and Factor test is saved on the phone automatically (last 12, shown under the Backtest tab with a Show button). With Cloud sync on, the summary, breakdown and trade list also go to your Supabase table backtest_runs, so results can be reviewed later. The random-data sanity run is not saved.</p>
 
       <h3>8c. News agent</h3>
       <p class="note">Optional. Claude with web search lists today's events (RBI, results, macro data, global cues) in the Signal tab: once in the morning and on demand (max 3 a day). It is context only: a warning appears on a signal when a high/medium event is within 20 minutes, and the AI second opinion also sees it. It never blocks or creates a trade. It can be wrong or incomplete, so verify important events yourself.</p>
@@ -874,7 +878,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) refr
 window.addEventListener('pageshow', refreshViews);
 window.addEventListener('focus', refreshViews);
 applySensex();
-showLast(false); renderNews();
+showLast(false); renderNews(); renderBtLog();
 
 function render(r, d, maxRiskRs) {
   const s = r.signal, sn = r.snap;
@@ -1166,6 +1170,23 @@ function moneyCard(m, note) {
   h += '<p class="note">Approximation: premium = % of index level, option stop-loss = 25% of premium, so 1R = one stop-loss. Real option P&amp;L will differ (theta, spread, delta, slippage). Charges use your Settings values. Fixed capital, no compounding.</p></div>';
   return h;
 }
+/* ---------- saved backtests: kept on the phone (last 12) and uploaded when Cloud sync is on ---------- */
+const slimSt = (x) => (x ? { n: x.n, win: x.winRate, expR: x.expR, se: x.se == null ? null : x.se, avgWinR: x.avgWinR, avgLossR: x.avgLossR, pf: x.profitFactor == null ? null : x.profitFactor } : null);
+function btStore(kind, summary, data, html) {
+  const params = { days: parseInt($('btdays').value, 10), capital: parseFloat($('btcap').value) || cfg.capital, risk: parseFloat($('btrisk').value) || cfg.riskPct, warm: BT_WARM };
+  const e = { id: Date.now(), ts: Date.now(), kind, sym: btSym, params, summary, data, html };
+  const l = ld('sb_btlog', []); l.unshift(e); sv('sb_btlog', l.slice(0, 12));
+  cloud('backtest_runs', [{ ts: cloudIso(e.ts), kind, sym: btSym, params, result: Object.assign({ summary }, data) }]);
+  renderBtLog();
+}
+function renderBtLog() {
+  const box = $('btlog'); if (!box) return;
+  const l = ld('sb_btlog', []);
+  if (!l.length) { box.innerHTML = '<p class="note">Your backtest results are saved here automatically (last 12).</p>'; return; }
+  const kn = { run: 'Backtest', ab: 'A/B test', fac: 'Factor test' };
+  box.innerHTML = '<div class="card"><b>Saved backtests</b>' + l.map((e) => '<div class="chk"><span>' + (kn[e.kind] || e.kind) + ' | ' + nameOf(e.sym) + ' | ' + e.params.days + ' days<br><em>' + esc(e.summary) + '</em></span><span><em>' + E.istDate(e.ts).slice(5) + ' ' + hmOf(e.ts) + '</em><br><button class="chip" data-bl="' + e.id + '">Show</button></span></div>').join('') + '</div>';
+  box.querySelectorAll('button[data-bl]').forEach((b) => b.onclick = () => { const it = ld('sb_btlog', []).find((x) => String(x.id) === b.dataset.bl); if (it) { $('btout').innerHTML = it.html; if ($('btout').scrollIntoView) $('btout').scrollIntoView(); } });
+}
 let btCache = null;
 async function getDays(kind) {
   if (kind === 'rw') return BTM.randomDays(120, 20260116, 0.0004);
@@ -1193,6 +1214,7 @@ async function btAB(kind) {
     h += '<p class="note">Rule: turn a filter on only if it is better than the baseline and positive out-of-sample, and its ±error is small compared with the expectancy. Tweaking filters repeatedly on the same data makes them fit that data. Charges and option effects are not included.</p>';
     if (kind === 'rw') h += '<p class="note">Random data has no edge. If any variant is called "worth keeping" here, the test is wrong.</p>';
     out.innerHTML = h;
+    if (kind !== 'rw') btStore('ab', res.nDays + ' days | ' + res.rows.map((r) => r.name.split(' ')[0] + ' ' + (r.outS.n ? rr2(r.outS.expR) : '-')).slice(0, 4).join(', ') + '...', { nDays: res.nDays, cut: res.cut, rows: res.rows.map((r) => ({ name: r.name, flags: r.flags, sim: r.sim || null, inS: slimSt(r.inS), outS: slimSt(r.outS), z: r.z == null ? null : r.z, verdict: r.verdict })) }, h);
   } catch (e) { st.textContent = ''; out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>'; }
   ['btgo', 'btrw', 'btab', 'btabrw'].forEach((i) => ($(i).disabled = false));
 }
@@ -1227,6 +1249,13 @@ async function btGo(kind) {
     h += '<div class="card"><b>Breakdown</b>' + grp(res.byDir, (k) => k) + grp(res.byHour, (k) => k + ':00 hour') + grp(res.byWhy, (k) => 'Exit ' + k) + '</div>';
     h += '<p class="note">Limit: this tests only the index trend + opening range core. Historical option premium, OI, PCR, IV, delta and spread data are not freely available, so those filters are not in the backtest. Slippage and charges are not included either. The full stack is validated by paper trading.</p>';
     out.innerHTML = h;
+    if (kind !== 'rw') {
+      const sl = (o) => { const r = {}; Object.keys(o).forEach((k) => (r[k] = slimSt(o[k]))); return r; };
+      btStore('run', s0.n + ' trades | win ' + pc(s0.winRate) + ' | ' + rr2(s0.expR) + 'R' + (res.se != null ? ' ±' + res.se.toFixed(2) : '') + ' | net ' + inr(mv.net), {
+        stats: slimSt(s0), se: res.se, z: res.z, beReal: res.beReal, byDir: sl(res.byDir), byHour: sl(res.byHour), byWhy: sl(res.byWhy),
+        money: { net: mv.net, retPct: mv.retPct, maxDDPct: mv.maxDDPct, charges: mv.charges, taken: mv.taken, skipped: mv.skipped, forced: mv.forced },
+        trades: trades.slice(0, 400).map((t) => [t.date, t.hour, t.option, t.why, Math.round(t.r * 1000) / 1000, Math.round(t.entry * 100) / 100, Math.round(t.risk * 100) / 100]) }, h);
+    }
   } catch (e) { st.textContent = ''; out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>'; }
   $('btgo').disabled = false; $('btrw').disabled = false;
 }
@@ -1246,6 +1275,7 @@ async function btFactors() {
     });
     h += '<p class="note">Do not remove a factor based on one run. Use this to find redundant factors, then confirm with paper trading.</p>';
     out.innerHTML = h;
+    btStore('fac', res.nDays + ' days | ' + res.rows.map((r) => (r.st.n ? rr2(r.st.expR) : '-')).join(', '), { nDays: res.nDays, rows: res.rows.map((r) => ({ name: r.name, flags: r.flags, st: slimSt(r.st), note: r.note || null })) }, h);
   } catch (e) { st.textContent = ''; out.innerHTML = '<div class="card"><span class="badge b-dn">ERROR</span><p>' + e.message + '</p></div>'; }
   ids.forEach((i) => ($(i).disabled = false));
 }
