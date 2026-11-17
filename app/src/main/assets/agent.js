@@ -89,6 +89,82 @@
     return { ok: true, opinion: op };
   };
 
+
+  /* ---------- News / event agent (Claude + web search). Context only: it never creates or blocks a trade by itself. ---------- */
+  A.NEWS_SYSTEM = [
+    'You are a news checker for an Indian index-options trader (Nifty, Bank Nifty, Sensex).',
+    'Use web search to find, for TODAY only: scheduled events in India (RBI policy or speeches, major results of index heavyweights, macro data releases, weekly expiry), overnight US and Asian market cues, big moves in crude oil, the US dollar or INR, and any major breaking news (policy, geopolitics) that could move the Indian index today.',
+    'Rules: use ONLY what you found in search results. If you did not find something, write "unknown". Never invent event times, numbers or headlines. Do not predict index prices.',
+    'Reply with ONLY a JSON object, no other text:',
+    '{"global":"1-2 short sentences","india":"1-2 short sentences","events":[{"time":"HH:MM IST or unknown","title":"short","impact":"high|medium|low"}],"bias":"risk-on|risk-off|mixed|unknown","caution":["max 3 short items"]}',
+  ].join('\n');
+
+  A.newsRequest = function (key, model, dateStr) {
+    return { url: 'https://api.anthropic.com/v1/messages',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 1500, system: A.NEWS_SYSTEM,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }],
+        messages: [{ role: 'user', content: 'Today is ' + dateStr + ' (India, IST). Give me the market context for today.' }] }) };
+  };
+
+  A.parseNews = function (j) {
+    const blocks = (j && j.content) || [];
+    const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join('\n');
+    const sources = [], seen = {};
+    const add = (u, t) => { if (u && !seen[u]) { seen[u] = 1; sources.push({ url: u, title: String(t || u).slice(0, 90) }); } };
+    blocks.forEach((b) => {
+      if (b.type === 'web_search_tool_result' && Array.isArray(b.content)) b.content.forEach((r) => add(r.url, r.title));
+      if (b.type === 'text' && Array.isArray(b.citations)) b.citations.forEach((c) => add(c.url, c.title));
+    });
+    const m = /\{[\s\S]*\}/.exec(text.replace(/```json|```/g, ''));
+    if (!m) return null;
+    let o; try { o = JSON.parse(m[0]); } catch (e) { return null; }
+    const str = (x, n) => (x == null ? 'unknown' : String(x).slice(0, n || 220));
+    const bias = ['risk-on', 'risk-off', 'mixed', 'unknown'].includes(String(o.bias)) ? o.bias : 'unknown';
+    const events = (Array.isArray(o.events) ? o.events : []).slice(0, 8).map((e) => ({ time: str(e.time, 20), title: str(e.title, 120), impact: ['high', 'medium', 'low'].includes(String(e.impact)) ? e.impact : 'low' }));
+    return { global: str(o.global), india: str(o.india), events, bias, caution: (Array.isArray(o.caution) ? o.caution : []).slice(0, 3).map((c) => str(c, 140)), sources: sources.slice(0, 6) };
+  };
+
+  A.askNews = async function (cfg, dateStr, send) {
+    if (cfg.agProv === 'gemini') return { ok: false, error: 'The news agent needs the Claude provider (it uses Claude web search). Switch the provider in Settings.' };
+    if (!cfg.agKey) return { ok: false, error: 'No API key. Add it in Settings.' };
+    const model = (cfg.agModel || '').trim() || A.DEFAULTS.claude;
+    const rq = A.newsRequest(cfg.agKey.trim(), model, dateStr);
+    let resp;
+    try { resp = await send(rq.url, rq.headers, rq.body, 75000); } catch (e) { return { ok: false, error: e.message || 'Network error' }; }
+    let j = null; try { j = JSON.parse(resp.body); } catch (e) {}
+    if (resp.status === 401 || resp.status === 403) return { ok: false, error: 'The API key was rejected (' + resp.status + ').' };
+    if (resp.status === 429) return { ok: false, error: 'Too many requests or no credit (429). Try later.' };
+    if (resp.status < 200 || resp.status > 299) {
+      const m = j && j.error && (j.error.message || j.error);
+      return { ok: false, error: 'AI error ' + resp.status + (m ? ': ' + String(m).slice(0, 160) : '') + '. If web search is not enabled for your Anthropic account, enable it in the Console, or choose a model that supports web search.' };
+    }
+    const err = ((j && j.content) || []).find((b) => b.type === 'web_search_tool_result' && b.content && b.content.type === 'web_search_tool_result_error');
+    const n = A.parseNews(j);
+    if (!n) return { ok: false, error: err ? 'Web search failed (' + err.content.error_code + '). Try again later.' : 'The reply could not be understood. Nothing was changed.' };
+    n.model = model; n.t = Date.now();
+    return { ok: true, news: n };
+  };
+
+  A.newsSummary = function (n) {
+    if (!n) return '';
+    const ev = (n.events || []).map((e) => e.time + ' ' + e.title + ' (' + e.impact + ')').join('; ');
+    return 'News check (AI + web, unverified): global: ' + n.global + ' | India: ' + n.india + ' | bias ' + n.bias + (ev ? ' | events: ' + ev : '') + ((n.caution || []).length ? ' | caution: ' + n.caution.join('; ') : '');
+  };
+
+  // Soft warning only: a high/medium impact event whose time is within +/- windowMin of now.
+  A.eventNear = function (n, nowMs, windowMin) {
+    if (!n || !n.events) return null;
+    const d = new Date(nowMs + 330 * 60000), nm = d.getUTCHours() * 60 + d.getUTCMinutes(), w = windowMin || 20;
+    for (const e of n.events) {
+      if (e.impact === 'low') continue;
+      const m = /(\d{1,2})[:.](\d{2})/.exec(e.time || ''); if (!m) continue;
+      const em = +m[1] * 60 + +m[2];
+      if (Math.abs(em - nm) <= w) return e;
+    }
+    return null;
+  };
+
   // Summary of opinions vs paper outcomes (used by the Learning report). trades = closed Tier A paper trades that carry t.agent.
   A.compare = function (trades) {
     const g = {};

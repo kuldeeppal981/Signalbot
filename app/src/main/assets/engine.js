@@ -242,7 +242,7 @@
     if (res.snap.er != null ? res.snap.er >= 0.3 : false) strength += 5;
     res.signal = Object.assign(pick, {
       tier: tierB ? 'B' : 'A', strength: Math.min(100, Math.round(strength)),
-      indexName: symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty',
+      indexName: symbol === 'BANKNIFTY' ? 'Bank Nifty' : symbol === 'SENSEX' ? 'Sensex' : 'Nifty',
       entryLo: r05(p), entryHi: r05(p * 1.02),
       sl: r05(p * 0.75), t1: r05(p * 1.5), t2: r05(p * 1.75),
       rr: '1:2 (T1), 1:3 (T2)',
@@ -298,7 +298,7 @@
     res.noTrade = false;
     res.reason = 'Expiry momentum breakout.';
     res.signal = Object.assign(best, {
-      option: dir > 0 ? 'CE' : 'PE', indexName: inp.symbol === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty',
+      option: dir > 0 ? 'CE' : 'PE', indexName: inp.symbol === 'BANKNIFTY' ? 'Bank Nifty' : inp.symbol === 'SENSEX' ? 'Sensex' : 'Nifty',
       entryLo: r05(best.ltp), entryHi: r05(best.ltp * 1.1), sl: r05(best.ltp * 0.5), t1: r05(best.ltp * 2), t2: r05(best.ltp * 4),
       lots, lotSize, maxLoss: lots * costLot, validUntil: E.hhmm(Math.min(nm + 15, 900)), expiry,
     });

@@ -92,7 +92,7 @@ class MainActivity : Activity() {
                     val c = u.openConnection() as HttpURLConnection
                     c.requestMethod = method
                     c.connectTimeout = 15000
-                    c.readTimeout = 20000
+                    c.readTimeout = if (method == "POST") 70000 else 20000
                     val h = JSONObject(headersJson)
                     h.keys().forEach { k -> c.setRequestProperty(k, h.getString(k)) }
                     if (method == "POST") {

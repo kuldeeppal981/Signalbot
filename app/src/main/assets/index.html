@@ -51,7 +51,7 @@ details summary{cursor:pointer;font-weight:700}
 <main>
   <section id="t-sig">
     <h1>Signal</h1>
-    <div class="row"><div class="seg" id="seg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button></div></div>
+    <div class="row"><div class="seg" id="seg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button><button data-s="SENSEX" class="sx" style="display:none">Sensex</button></div></div>
     <button class="btn" id="go">Check signal</button>
     <button class="btn ghost" id="demo">Try with demo data</button>
     <div class="card" style="margin-top:12px">
@@ -60,6 +60,7 @@ details summary{cursor:pointer;font-weight:700}
       <button class="btn" id="auto">Start auto-scan (notifications)</button>
       <button class="btn ghost" id="batt">Remove battery restriction (important)</button>
     </div>
+    <div id="newsbox" style="margin-top:14px"></div>
     <div id="out" style="margin-top:14px"></div>
     <div class="card"><b>Expiry Zero-Hero</b> <span class="badge b-dn">HIGH RISK</span>
       <p class="note">Expiry day only, 1:00-2:45 PM. A cheap far-OTM option that often expires worthless. Max 1 per day.</p>
@@ -68,7 +69,7 @@ details summary{cursor:pointer;font-weight:700}
   </section>
   <section id="t-ch" class="hide">
     <h1>Live chart</h1>
-    <div class="seg" id="chseg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button></div>
+    <div class="seg" id="chseg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button><button data-s="SENSEX" class="sx" style="display:none">Sensex</button></div>
     <p class="note" id="chst" style="margin-top:10px"></p>
     <div class="card" style="padding:8px 6px 6px"><canvas id="chcv"></canvas>
       <p class="note" style="margin:6px 8px 2px" id="chinfo">Tap a candle to see its OHLC.</p>
@@ -81,7 +82,7 @@ details summary{cursor:pointer;font-weight:700}
   <section id="t-bt" class="hide">
     <h1>Backtest</h1>
     <div class="card">
-      <div class="seg" id="btseg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button></div>
+      <div class="seg" id="btseg"><button class="on" data-s="NIFTY">Nifty</button><button data-s="BANKNIFTY">Bank Nifty</button><button data-s="SENSEX" class="sx" style="display:none">Sensex</button></div>
       <label for="btdays">Trading days</label>
       <select id="btdays"><option>20</option><option selected>40</option><option>60</option><option>100</option></select>
       <label for="btcap">Capital (Rs)</label>
@@ -119,6 +120,12 @@ details summary{cursor:pointer;font-weight:700}
       <select id="zhon"><option value="0">Off</option><option value="1">On</option></select>
       <label for="zhb">Zero-Hero budget per trade (Rs). 0 = 1% of capital</label>
       <input id="zhb" type="number" inputmode="numeric">
+      <label for="sxon">Sensex (BSE) as a third index. Experimental</label>
+      <select id="sxon"><option value="0">Off</option><option value="1">On</option></select>
+      <p class="note">Uses the same rules. Lot size and expiry come from Upstox. There is no Angel One cross-check for Sensex. It adds more scans (more Upstox calls) and shares the same 2-signals-a-day limit. Check it in paper mode first. Sensex options can be less liquid, so watch the bid-ask spread.</p>
+      <label for="nwon">News / event agent (Claude + web search)</label>
+      <select id="nwon"><option value="0">Off</option><option value="1">On</option></select>
+      <p class="note">Shows today's events (RBI, results, global cues) in the Signal tab, once in the morning and when you tap the button (max 3 a day). Needs the Claude provider and key below, and web search enabled in your Anthropic Console. It costs a little per update (search + tokens). It is only context and a warning near event times. It never blocks or creates a trade, and it can be wrong, so verify important events.</p>
       <label for="agon">AI second-opinion agent (advisory only)</label>
       <select id="agon"><option value="0">Off</option><option value="1">On</option></select>
       <label for="agprov">AI provider</label>
@@ -159,7 +166,7 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note">Educational tool, not investment advice. No accuracy is claimed. Options buying is high risk and you can lose the whole premium. The edge of this strategy is NOT proven; validate with Backtest and paper trading first.</p>
 
       <h3>1. What the app does</h3>
-      <p class="note">Nifty and Bank Nifty, CE or PE BUYING only, ATM or 1-strike OTM. Strict signals (Tier A): max 2 per day, and "No Trade" when unclear. Data: Upstox (main), Angel One (optional spot cross-check).</p>
+      <p class="note">Nifty and Bank Nifty (and Sensex if you switch it on in Settings), CE or PE BUYING only, ATM or 1-strike OTM. Strict signals (Tier A): max 2 per day, and "No Trade" when unclear. Data: Upstox (main), Angel One (optional spot cross-check).</p>
 
       <h3>2. Signal: 6-factor score (5-minute candles)</h3>
       <p class="note">Each factor is +1 (bullish), -1 (bearish) or 0:<br>
@@ -201,6 +208,9 @@ details summary{cursor:pointer;font-weight:700}
       <h3>8b. Trade Watcher (real trades)</h3>
       <p class="note">When you tap "I took this trade", the Journal trade is watched every minute (auto-scan on). Alerts: index crossed the invalidation level (exit now), stop-loss hit, fast premium drop (-12% in 5 min), Target 1 (book, move the stop to entry), breakeven stop after T1, no progress at 40 min, time exit at 45 min, market closing. It never places or changes orders. Put a stop-loss order at your broker right after entry: that is the real protection. You can enter your real fill price and the levels are recalculated.</p>
 
+      <h3>8c. News agent</h3>
+      <p class="note">Optional. Claude with web search lists today's events (RBI, results, macro data, global cues) in the Signal tab: once in the morning and on demand (max 3 a day). It is context only: a warning appears on a signal when a high/medium event is within 20 minutes, and the AI second opinion also sees it. It never blocks or creates a trade. It can be wrong or incomplete, so verify important events yourself.</p>
+
       <h3>9. Learning report and AI agent</h3>
       <p class="note">Journal tab: the Learning report finds patterns (time, CE/PE, score, VIX, execution, mistakes) and gives suggestions with sample sizes. It never changes the strategy by itself. The optional AI second-opinion agent (Settings) reviews a Tier A signal and says TAKE / WAIT / SKIP. It is advisory only: it cannot change size, stop-loss or place orders, and its opinions are compared with results in the report.</p>
 
@@ -226,7 +236,7 @@ const E = window.SignalEngine, AN = window.Analytics, PP = window.Paper, BTM = w
 const $ = (id) => document.getElementById(id);
 const ld = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-let cfg = Object.assign({ token: '', capital: 20000, riskPct: 1, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false, flRetest: false, agOn: false, agProv: 'claude', agKey: '', agModel: '', agCap: 10, agNote: '' }, ld('sb_cfg', {}));
+let cfg = Object.assign({ token: '', capital: 20000, riskPct: 1, aKey: '', aCode: '', aPin: '', aTotp: '', zhOn: false, zhBudget: 0, paperOn: true, chBrok: 20, chStt: 0.15, flConfirm: false, flRegime: false, flRetest: false, agOn: false, agProv: 'claude', agKey: '', agModel: '', agCap: 10, agNote: '', sensexOn: false, newsOn: false }, ld('sb_cfg', {}));
 let sym = 'NIFTY', last = null, curTab = 'sig';
 const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
 const f2 = (x) => (x == null ? '-' : Number(x).toFixed(2));
@@ -272,12 +282,12 @@ const nfetch = (method, url, headers, body) => new Promise((res, rej) => {
   setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('Timeout. Check your internet connection.')); } }, 30000);
 });
 // Raw call for the AI agent: returns {status, body} for any HTTP status (the Upstox path above turns errors into Upstox messages).
-const nfetchRaw = (url, headers, body) => new Promise((res, rej) => {
+const nfetchRaw = (url, headers, body, ms) => new Promise((res, rej) => {
   if (!window.Native) return rej(new Error('This app must run inside the Android APK.'));
   const id = Math.random().toString(36).slice(2);
   pending[id] = { res, rej, raw: true };
   window.Native.fetch(id, 'POST', url, JSON.stringify(headers || {}), body || '');
-  setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('The AI did not answer in 30 seconds.')); } }, 30000);
+  setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('The AI did not answer in time.')); } }, ms || 30000);
 });
 // Every Upstox call goes through the guard: shared cache, spacing, budget, 429 backoff.
 const guard = window.Guard.create({ send: (path) => nfetch('GET', 'https://api.upstox.com' + path,
@@ -310,7 +320,17 @@ async function angelSpot(s) {
   return row.ltp;
 }
 
-const KEYS = { NIFTY: 'NSE_INDEX|Nifty 50', BANKNIFTY: 'NSE_INDEX|Nifty Bank', VIX: 'NSE_INDEX|India VIX' };
+const KEYS = { NIFTY: 'NSE_INDEX|Nifty 50', BANKNIFTY: 'NSE_INDEX|Nifty Bank', SENSEX: 'BSE_INDEX|SENSEX', VIX: 'NSE_INDEX|India VIX' };
+// One table for every index. Real lot size and expiry always come from Upstox; "lot" below is only a fallback / demo value.
+const INSTR = {
+  NIFTY: { name: 'Nifty', short: 'Nifty', q: 'nifty 50', lot: 65, step: 50, base: 24000, drift: 0.42 },
+  BANKNIFTY: { name: 'Bank Nifty', short: 'BankN', q: 'nifty bank', lot: 30, step: 100, base: 52000, drift: 0.9 },
+  SENSEX: { name: 'Sensex', short: 'Sensex', q: 'sensex', lot: 20, step: 100, base: 80000, drift: 1.2 },
+};
+const nameOf = (s) => (INSTR[s] || INSTR.NIFTY).name;
+const symOf = (nm) => Object.keys(INSTR).find((k) => INSTR[k].name === nm) || 'NIFTY';
+const SYMS = () => (cfg.sensexOn ? ['NIFTY', 'BANKNIFTY', 'SENSEX'] : ['NIFTY', 'BANKNIFTY']);
+function applySensex() { document.querySelectorAll('.sx').forEach((b) => { b.style.display = cfg.sensexOn ? '' : 'none'; }); }
 // Same paths + TTLs are used by scan and chart, so one network call serves both.
 const qPath = (s) => '/v2/market-quote/quotes?instrument_key=' + encodeURIComponent(KEYS[s] + ',' + KEYS.VIX);
 const cPath = (s) => '/v2/historical-candle/intraday/' + encodeURIComponent(KEYS[s]) + '/1minute';
@@ -334,7 +354,7 @@ async function loadLive(s) {
   ]);
   const quotes = Object.entries(q.data || {});
   const find = (name) => { const e = quotes.find(([k]) => k.toLowerCase().includes(name)); return e ? e[1].last_price : null; };
-  const spot = find(s === 'NIFTY' ? 'nifty 50' : 'nifty bank');
+  const spot = find(INSTR[s].q);
   const vix = find('vix');
   const contracts = ct.data || [];
   const td = today();
@@ -355,25 +375,25 @@ async function loadLive(s) {
     peIv: r.put_options && r.put_options.option_greeks ? r.put_options.option_greeks.iv : null,
     peBid: r.put_options && r.put_options.market_data.bid_price, peAsk: r.put_options && r.put_options.market_data.ask_price,
   }));
-  return { symbol: s, spot, vix, chain, chainSpot: ((ch.data || [])[0] || {}).underlying_spot_price, lotSize: lotSize || (s === 'NIFTY' ? 65 : 30), expiry: exps[0],
+  return { symbol: s, spot, vix, chain, chainSpot: ((ch.data || [])[0] || {}).underlying_spot_price, lotSize: lotSize || INSTR[s].lot, expiry: exps[0],
     candles: E.parseCandles((cd.data && cd.data.candles) || []), nowMs: Date.now(), prevCandles, warmErr };
 }
 
 /* ---------- demo data (synthetic, for UI testing only) ---------- */
 function demoData(s) {
   const base = Date.parse('2026-11-16T09:15:00+05:30'), n = 75, rows = [];
-  let p = s === 'NIFTY' ? 24000 : 52000;
+  let p = INSTR[s].base;
   for (let i = 0; i < n; i++) {
     const t = new Date(base + i * 60000 + 19800000).toISOString().slice(0, 19) + '+05:30';
-    const o = p; p += (s === 'NIFTY' ? 0.42 : 0.9) + (i % 3 === 0 ? -0.15 : 0.1);
+    const o = p; p += INSTR[s].drift + (i % 3 === 0 ? -0.15 : 0.1);
     rows.push([t, o, Math.max(o, p) + 0.5, Math.min(o, p) - 0.5, p, 0, 0]);
   }
-  const step = s === 'NIFTY' ? 50 : 100, chain = [];
+  const step = INSTR[s].step, chain = [];
   for (let k = Math.round(p / step) * step - 10 * step; k <= p + 10 * step; k += step) {
     chain.push({ strike: k, ceKey: 'DEMO', peKey: 'DEMO', ceLtp: Math.max(5, p - k + 110), peLtp: Math.max(5, k - p + 110),
       ceOi: k === Math.round(p / step) * step + 8 * step ? 900000 : 200000, peOi: k === Math.round(p / step) * step - 8 * step ? 900000 : 400000 });
   }
-  return { symbol: s, spot: p, vix: 14.2, chain, lotSize: s === 'NIFTY' ? 65 : 30, expiry: 'demo',
+  return { symbol: s, spot: p, vix: 14.2, chain, lotSize: INSTR[s].lot, expiry: 'demo',
     candles: E.parseCandles(rows.reverse()), nowMs: base + n * 60000, demo: true };
 }
 
@@ -446,7 +466,7 @@ function closedToday() {
 function riskState(s) {
   const cl = closedToday();
   let consec = 0; for (let i = cl.length - 1; i >= 0 && cl[i].pnl < 0; i--) consec++;
-  const last = cl[cl.length - 1], nm = s === 'NIFTY' ? 'Nifty' : 'Bank Nifty';
+  const last = cl[cl.length - 1], nm = nameOf(s);
   const recent = [];
   ld(notifKey(), []).forEach((q) => { if (q.sym === s && q.tMs) recent.push({ dir: q.dir, t: q.tMs }); });
   paperList().filter((x) => x.date === today() && x.sym === s && x.tier !== 'B').forEach((x) => recent.push({ dir: x.dir, t: x.createdAt }));
@@ -531,7 +551,7 @@ const tbList = () => ld(tbKey(), []);
 async function compute(s, demo, tierB) {
   if (!demo && !cfg.token) throw new Error('First enter your Upstox token in Settings, or try the demo.');
   const d = demo ? demoData(s) : await loadLive(s);
-  if (!demo && angelOn()) {
+  if (!demo && angelOn() && ANGEL_TOKENS[s]) { // Angel cross-check exists only for Nifty / Bank Nifty
     try { d.altSpot = await angelSpot(s); }
     catch (e) { d.angelErr = e.message; angelJwt = null; }
   }
@@ -617,7 +637,7 @@ function notifyOnce(tag, title, text) {
 }
 // One full scan of one index: analysis, decision log, signal log, notification, paper trade.
 async function scanSymbol(s) {
-  const nm = s === 'NIFTY' ? 'Nifty' : 'BankNifty';
+  const nm = INSTR[s].short;
   const x = await compute(s, false);
   if (cfg.zhOn) {
     const z = zhEval(x.d), zk = 'sb_zhn_' + today();
@@ -653,6 +673,39 @@ async function scanSymbol(s) {
 }
 /* ---------- AI second opinion (advisory only) ---------- */
 const agKey = () => 'sb_ag_' + today();
+/* ---------- News / event agent (Claude web search). Context and warnings only ---------- */
+const newsKey = () => 'sb_news_' + today();
+const newsRunsKey = () => 'sb_newsruns_' + today();
+let newsBusy = false;
+const newsLoad = () => { const o = ld(newsKey(), null); return o && o.news ? o.news : null; };
+async function newsRun() {
+  if (!cfg.newsOn) return { ok: false, error: 'News agent is off in Settings.' };
+  if (newsBusy) return { ok: false, error: 'Already updating...' };
+  const used = ld(newsRunsKey(), 0);
+  if (used >= 3) return { ok: false, error: 'Daily limit of 3 news updates reached.' };
+  newsBusy = true; sv(newsRunsKey(), used + 1);
+  try {
+    const res = await AG.askNews(cfg, today(), nfetchRaw);
+    if (res.ok) sv(newsKey(), { news: res.news });
+    return res;
+  } finally { newsBusy = false; }
+}
+function newsCardHtml(n) {
+  const ic = { high: 'd', medium: '', low: 'u' };
+  return '<div class="card"><div class="j"><b>Market context today</b><span class="badge b-no">' + esc(String(n.bias).toUpperCase()) + '</span></div>' +
+    '<p class="note"><b>Global:</b> ' + esc(n.global) + '<br><b>India:</b> ' + esc(n.india) + '</p>' +
+    (n.events.length ? n.events.map((e) => '<div class="chk"><span><i class="dot ' + (ic[e.impact] || '') + '"></i>' + esc(e.title) + ' <em>(' + e.impact + ')</em></span><em>' + esc(e.time) + '</em></div>').join('') : '<p class="note">No scheduled events found.</p>') +
+    ((n.caution || []).length ? '<p class="note"><b>Caution:</b> ' + n.caution.map(esc).join('; ') + '</p>' : '') +
+    '<p class="note">AI + web search, updated ' + hmOf(n.t) + '. It can be wrong or incomplete, so verify important events yourself. Sources: ' + (n.sources.length ? n.sources.map((x) => esc((x.url.replace(/^https?:\/\//, '').split('/')[0]))).filter((v, i, a) => a.indexOf(v) === i).join(', ') : 'none') + '. It never blocks or creates a trade by itself.</p></div>';
+}
+function renderNews(msg) {
+  const box = $('newsbox'); if (!box) return;
+  if (!cfg.newsOn) { box.innerHTML = ''; return; }
+  const n = newsLoad();
+  box.innerHTML = (n ? newsCardHtml(n) : '<div class="card"><b>Market context today</b><p class="note">' + esc(msg || 'Not loaded yet. It loads by itself once in the morning, or tap the button.') + '</p></div>') +
+    '<button class="btn ghost" id="newsgo">' + (n ? 'Update market context' : 'Get market context') + '</button>';
+  $('newsgo').onclick = async () => { const b = $('newsgo'); b.disabled = true; b.textContent = 'Searching the web...'; const r = await newsRun(); renderNews(r.ok ? '' : r.error); if (!r.ok && !newsLoad()) return; if (!r.ok) { const bx = $('newsbox'); bx.insertAdjacentHTML('beforeend', '<p class="note">' + esc(r.error) + '</p>'); } };
+}
 function agentCard(op) {
   const cls = op.verdict === 'TAKE' ? 'b-up' : op.verdict === 'SKIP' ? 'b-dn' : 'b-no';
   return '<div class="card"><div class="j"><b>AI second opinion</b><span class="badge ' + cls + '">' + op.verdict + '</span></div>' +
@@ -666,7 +719,7 @@ async function agentReview(sg, r, d, pt, s) {
   const used = ld(agKey(), 0), cap = cfg.agCap > 0 ? cfg.agCap : 10;
   if (used >= cap) return { ok: false, error: 'Daily AI call limit reached (' + cap + '). Change it in Settings.' };
   sv(agKey(), used + 1);
-  const res = await AG.ask(cfg, AG.snapshot(Object.assign({}, r, { signal: sg }), d, { note: cfg.agNote, nowMs: Date.now() }), nfetchRaw);
+  const res = await AG.ask(cfg, AG.snapshot(Object.assign({}, r, { signal: sg }), d, { note: [cfg.agNote, AG.newsSummary(newsLoad())].filter(Boolean).join(' | '), nowMs: Date.now() }), nfetchRaw);
   if (!res.ok) return res;
   const op = res.opinion; op.t = Date.now();
   if (pt) { const l = paperList(), x = l.find((a) => a.id === pt.id); if (x) { x.agent = { verdict: op.verdict, confidence: op.confidence, reasons: op.reasons, t: op.t }; savePaper(l); } }
@@ -694,15 +747,16 @@ async function autoTick() {
   const now = Date.now(), nm = E.istMin(now), dow = new Date(now + 19800000).getUTCDay();
   if (dow === 0 || dow === 6) { autoMsg = 'Weekend, market closed. ' + hm(); return setAutoUi(); }
   if (nm >= 555 && nm <= 935) { try { await manageTrades(); } catch (e) {} }
+  if (cfg.newsOn && !newsBusy && nm >= 525 && nm <= 900 && !newsLoad() && ld(newsRunsKey(), 0) < 1) newsRun().then(() => { if (curTab === 'sig') renderNews(); }).catch(() => {}); // once a day, in the morning
   if (nm > 930) { stopService(); autoMsg = 'Market closed. Open the app tomorrow morning and auto-scan will start by itself.'; return setAutoUi(); }
   if (nm < 570 || nm > (cfg.zhOn ? 885 : 870)) { autoMsg = (nm < 570 ? 'Waiting for 9:30.' : 'No new entries after 2:30.') + ' ' + hm(); return setAutoUi(); }
   scanning = true;
   const lines = [];
   try {
-    for (const s of ['NIFTY', 'BANKNIFTY']) {
+    for (const s of SYMS()) {
       try { lines.push(await scanSymbol(s)); }
       catch (e) {
-        lines.push((s === 'NIFTY' ? 'Nifty' : 'BankNifty') + ': error');
+        lines.push(INSTR[s].short + ': error');
         if (/Token/i.test(e.message)) notifyOnce('token', 'SignalBot: token problem', 'Upstox token is invalid or expired. Enter a new one in Settings.');
         else autoMsg = 'Error: ' + e.message;
       }
@@ -737,7 +791,7 @@ function showLast(force) {
 // The app can stay open in the background while auto-scan works. Redraw whatever is on screen
 // when a scan finishes and when the app comes back to the foreground.
 function refreshViews() {
-  if (curTab === 'sig') showLast(false);
+  if (curTab === 'sig') { showLast(false); renderNews(); }
   else if (curTab === 'pp') renderPaper();
   else if (curTab === 'jr') renderJournal();
   else if (curTab === 'ch') { chartRedraw(); chartSigList(); }
@@ -745,7 +799,8 @@ function refreshViews() {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshViews(); });
 window.addEventListener('pageshow', refreshViews);
 window.addEventListener('focus', refreshViews);
-showLast(false);
+applySensex();
+showLast(false); renderNews();
 
 function render(r, d, maxRiskRs) {
   const s = r.signal, sn = r.snap;
@@ -758,6 +813,7 @@ function render(r, d, maxRiskRs) {
     const dn = s.option === 'PE';
     h += '<div class="big" style="color:var(--' + (dn ? 'dn' : 'up') + ')">' + s.indexName + ' ' + s.strike + ' ' + s.option + '</div>' +
       '<p class="note">' + s.strikeType + ' | Expiry ' + d.expiry + ' | Lot ' + s.lotSize + '</p>' +
+      (function () { const ev = cfg.newsOn ? AG.eventNear(newsLoad(), Date.now(), 20) : null; return ev ? '<p class="note" style="color:var(--warn)"><b>Event near:</b> ' + esc(ev.title) + ' around ' + esc(ev.time) + ' (' + ev.impact + '). Be careful: moves can be sudden.</p>' : ''; })() +
       (s.strength != null ? '<p class="note"><b>Setup strength ' + s.strength + '/100</b> (how many factors agree; this is NOT a win probability)</p>' : '') +
       '<div class="kv">' +
       '<span>Entry zone</span><span>' + f2(s.entryLo) + ' - ' + f2(s.entryHi) + '</span>' +
@@ -802,20 +858,20 @@ function render(r, d, maxRiskRs) {
     j.unshift({ id: Date.now(), date: today(), idx: s.indexName, opt: s.option, strike: s.strike, entry: s.ltp, sl: s.sl, t1: s.t1, t2: s.t2,
       lots: Math.max(1, s.lots), lotSize: s.lotSize, exit: null,
       // for the Trade Watcher
-      key: s.key, sym: s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY', inv: s.indexInvalidation, createdAt: Date.now(), tier: s.tier || 'A' });
+      key: s.key, sym: symOf(s.indexName), inv: s.indexInvalidation, createdAt: Date.now(), tier: s.tier || 'A' });
     sv('sb_journal', j); sv(cntKey(), ld(cntKey(), 0) + 1);
     tb.disabled = true; tb.textContent = 'Saved to journal';
   };
   const agb = $('agask');
   if (agb) agb.onclick = async () => {
     agb.disabled = true; agb.textContent = 'Asking...';
-    const res = await agentReview(s, r, d, null, s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY');
+    const res = await agentReview(s, r, d, null, symOf(s.indexName));
     $('agout').innerHTML = res.ok ? agentCard(res.opinion) : '<p class="note">' + esc(res.error) + '</p>';
     agb.disabled = false; agb.textContent = 'Ask again';
   };
   const pt = $('ptook');
   if (pt) pt.onclick = () => {
-    const t = createPaper(s, s.indexName === 'Nifty' ? 'NIFTY' : 'BANKNIFTY', r);
+    const t = createPaper(s, symOf(s.indexName), r);
     pt.disabled = true; pt.textContent = t ? 'Paper trade started. See the Paper tab.' : 'Paper trading is off in Settings';
   };
 }
@@ -854,7 +910,7 @@ async function chartLoad(manual) {
       loadPrev(s, { prio: pr, staleOk: true }).catch(() => []),
     ]);
     if (s !== chSym) return;
-    const e = Object.entries(q.data || {}).find(([k]) => k.toLowerCase().includes(s === 'NIFTY' ? 'nifty 50' : 'nifty bank'));
+    const e = Object.entries(q.data || {}).find(([k]) => k.toLowerCase().includes(INSTR[s].q));
     const ltp = e ? e[1].last_price : null;
     if (ltp) lastSpot[s] = ltp;
     const candles = E.parseCandles((cd.data && cd.data.candles) || []);
@@ -1002,7 +1058,7 @@ async function fetchHistory(s, nDays) {
   return Object.keys(byDay).sort().filter((d) => d < td && byDay[d].length >= 330).slice(-nDays).map((d) => byDay[d]);
 }
 const BT_WARM = 4; // earlier sessions used only to warm up EMAs in the backtest
-const LOT_DEFAULT = { NIFTY: 65, BANKNIFTY: 30 };
+const LOT_DEFAULT = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20 };
 async function btLot(kind) {
   if (kind === 'rw') return { size: LOT_DEFAULT[btSym], note: 'default lot size' };
   try {
@@ -1055,7 +1111,7 @@ async function btAB(kind) {
     const res = await BTM.compare(days, { rr: 2, symbol: btSym, warm: W }, 0.7, async (nm, i, n) => { st.textContent = nm + ': day ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
     st.textContent = '';
     const cell = (x) => x.n ? x.n + ' | ' + pc(x.winRate) + ' | ' + rr2(x.expR) + (x.se != null ? ' ±' + x.se.toFixed(2) : '') : 'no trades';
-    let h = '<div class="card"><b>A/B test' + (kind === 'rw' ? ' (random data sanity)' : ' (' + (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ')') + '</b><p class="note">' + res.nDays + ' days. First ' + res.cut + ' days = in-sample, remaining ' + (res.nDays - res.cut) + ' days = out-of-sample. Format: trades | win rate | expectancy ±error (index R).</p></div>';
+    let h = '<div class="card"><b>A/B test' + (kind === 'rw' ? ' (random data sanity)' : ' (' + nameOf(btSym) + ')') + '</b><p class="note">' + res.nDays + ' days. First ' + res.cut + ' days = in-sample, remaining ' + (res.nDays - res.cut) + ' days = out-of-sample. Format: trades | win rate | expectancy ±error (index R).</p></div>';
     res.rows.forEach((r) => {
       h += '<div class="card"><b>' + r.name + '</b><div class="kv" style="margin-top:8px"><span>In-sample</span><span>' + cell(r.inS) + '</span><span>Out-of-sample</span><span>' + cell(r.outS) + '</span></div><p class="note" style="margin-top:8px">' + r.verdict + '</p></div>';
     });
@@ -1087,7 +1143,7 @@ async function btGo(kind) {
     else if (res.z != null && res.z >= 2) verdict = 'Expectancy is positive and clearly above the noise (' + rr2(s0.expR) + ' ± ' + res.se.toFixed(2) + 'R). At index level only: it will shrink after option theta, spread and charges. Confirm it with paper trading.';
     else if (s0.expR > 0) verdict = 'Expectancy is ' + rr2(s0.expR) + ' but the error is ±' + (res.se == null ? '?' : res.se.toFixed(2)) + 'R, so it could be zero. Win rate ' + pc(s0.winRate) + ' vs real break-even ' + (res.beReal == null ? '-' : pc(res.beReal)) + ' (from your own average win/loss). Not a proven edge, needs more data.';
     else verdict = 'No edge visible. Do not put real money on this rule set. Change the rules or drop the strategy.';
-    let h = '<div class="card"><b>' + (kind === 'rw' ? 'Random data sanity test' : (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ' backtest') + '</b><p class="note">' + (days.length - W) + ' days (+' + W + ' warm-up) | target 1:' + res.rr + ' | win rate ' + pc(s0.winRate) + ' ± ' + pc(res.ci) + ' | real break-even win rate ' + (res.beReal == null ? '-' : pc(res.beReal)) + ' (theoretical for 1:' + res.rr + ' is ' + pc(res.breakevenWinRate) + ', but most exits are time exits, so wins are smaller) | expectancy ' + rr2(s0.expR) + ' ± ' + (res.se == null ? '-' : res.se.toFixed(2)) + 'R</p><p>' + verdict + '</p>' + spark(res.equity) + '</div>';
+    let h = '<div class="card"><b>' + (kind === 'rw' ? 'Random data sanity test' : nameOf(btSym) + ' backtest') + '</b><p class="note">' + (days.length - W) + ' days (+' + W + ' warm-up) | target 1:' + res.rr + ' | win rate ' + pc(s0.winRate) + ' ± ' + pc(res.ci) + ' | real break-even win rate ' + (res.beReal == null ? '-' : pc(res.beReal)) + ' (theoretical for 1:' + res.rr + ' is ' + pc(res.breakevenWinRate) + ', but most exits are time exits, so wins are smaller) | expectancy ' + rr2(s0.expR) + ' ± ' + (res.se == null ? '-' : res.se.toFixed(2)) + 'R</p><p>' + verdict + '</p>' + spark(res.equity) + '</div>';
     h += statsCard(s0, 'Result (index R, before charges)', false);
     const lt = await btLot(kind), cap0 = parseFloat($('btcap').value) || cfg.capital;
     const mv = BTM.inr(trades, { capital: cap0, riskPct: parseFloat($('btrisk').value) || cfg.riskPct, premPct: (parseFloat($('btprem').value) || 0.45) / 100, lotSize: lt.size, charges: (tb, ts) => AN.charges({ tb, ts, orders: 2 }, chCfg()).total });
@@ -1109,7 +1165,7 @@ async function btFactors() {
     if (days.length - W < 20) throw new Error('At least 20 trading days of data needed. Got: ' + (days.length - W));
     const res = await BTM.ablation(days, { rr: 2, symbol: btSym, warm: W }, async (nm, i, n) => { st.textContent = nm + ': day ' + i + '/' + n; await new Promise((r) => setTimeout(r, 0)); });
     st.textContent = '';
-    let h = '<div class="card"><b>Factor test (' + (btSym === 'NIFTY' ? 'Nifty' : 'Bank Nifty') + ', ' + res.nDays + ' days)</b><p class="note">Each row removes one factor and lowers the minimum score by 1 so the test is fair. Format: trades | win rate | expectancy ±error (index R). If removing a factor changes nothing beyond the noise, that factor adds little.</p></div>';
+    let h = '<div class="card"><b>Factor test (' + nameOf(btSym) + ', ' + res.nDays + ' days)</b><p class="note">Each row removes one factor and lowers the minimum score by 1 so the test is fair. Format: trades | win rate | expectancy ±error (index R). If removing a factor changes nothing beyond the noise, that factor adds little.</p></div>';
     res.rows.forEach((r) => {
       h += '<div class="card"><b>' + r.name + '</b><div class="kv" style="margin-top:8px"><span>Result</span><span>' + (r.st.n ? r.st.n + ' | ' + pc(r.st.winRate) + ' | ' + rr2(r.st.expR) + (r.st.se != null ? ' ±' + r.st.se.toFixed(2) : '') : 'no trades') + '</span>' + (r.delta != null ? '<span>Change vs baseline</span><span>' + rr2(r.delta) + ' (noise ±' + r.noise.toFixed(2) + ')</span>' : '') + '</div><p class="note" style="margin-top:8px">' + r.note + '</p></div>';
     });
@@ -1139,7 +1195,7 @@ function renderJournal() {
   if (openW.length) h += '<div class="card"><div class="j"><b>Trade Watcher</b><span class="badge b-up">ON</span></div><p class="note">Watching ' + openW.length + ' open trade(s) every minute while the app is running (auto-scan on). It only sends alerts. <b>Place a stop-loss order at your broker right after you enter</b>: that is the real protection, an alert can be late.</p><button class="btn ghost" id="wtnow">Check now</button></div>';
   const dl = ld(dlKey(), []);
   h += '<details class="card"><summary>Today\'s decision log (' + dl.length + ')</summary><p class="note">What the app decided on every scan. Reading the reason behind each "No Trade" is the best way to learn.</p>' +
-    (dl.length ? dl.slice(0, 40).map((x) => '<div class="chk"><span>' + (x.sig ? '&#9650; ' : '') + (x.sym === 'NIFTY' ? 'Nifty' : 'BankN') + ': ' + esc(x.reason) + '</span><em>' + hmOf(x.first) + (x.n > 1 ? '-' + hmOf(x.last) + ' x' + x.n : '') + '</em></div>').join('') : '<p class="note">No scan has run yet today.</p>') + '</details>';
+    (dl.length ? dl.slice(0, 40).map((x) => '<div class="chk"><span>' + (x.sig ? '&#9650; ' : '') + (INSTR[x.sym] ? INSTR[x.sym].short : x.sym) + ': ' + esc(x.reason) + '</span><em>' + hmOf(x.first) + (x.n > 1 ? '-' + hmOf(x.last) + ' x' + x.n : '') + '</em></div>').join('') : '<p class="note">No scan has run yet today.</p>') + '</details>';
   const tagged = done.filter((x) => x.tags && x.tags.length);
   if (tagged.length) {
     h += '<div class="card"><b>P&amp;L by tag</b><div class="kv" style="margin-top:8px">' + TAGS.map((t) => {
@@ -1209,10 +1265,10 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('save').onclick = () => {
-  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
-  sv('sb_cfg', cfg); angelJwt = null; guard.clear(); $('saved').textContent = 'Saved.';
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  sv('sb_cfg', cfg); angelJwt = null; guard.clear(); applySensex(); renderNews(); $('saved').textContent = 'Saved.';
 };
 </script>
 </body>
