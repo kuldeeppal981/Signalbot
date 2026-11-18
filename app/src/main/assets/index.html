@@ -60,6 +60,7 @@ details summary{cursor:pointer;font-weight:700}
       <button class="btn" id="auto">Start auto-scan (notifications)</button>
       <button class="btn ghost" id="batt">Remove battery restriction (important)</button>
     </div>
+    <div id="srvbox" style="margin-top:14px"></div>
     <div id="newsbox" style="margin-top:14px"></div>
     <div id="out" style="margin-top:14px"></div>
     <div class="card"><b>Expiry Zero-Hero</b> <span class="badge b-dn">HIGH RISK</span>
@@ -158,6 +159,9 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note">Check both with the A/B test in the Backtest tab first, and turn them on only if they help.</p>
       <label for="ppon">Paper trading (virtual trade as soon as a signal appears)</label>
       <select id="ppon"><option value="1">On</option><option value="0">Off</option></select>
+      <label for="maxsig">Max Tier A signals per day (1 to 5, default 2)</label>
+      <input id="maxsig" type="number" inputmode="numeric" min="1" max="5">
+      <p class="note">This only limits real-trade signals. Setups that appear after the limit still go to the Paper tab as paper-only Tier B, so no data is lost.</p>
       <label for="chb">Brokerage per order (Rs)</label>
       <input id="chb" type="number" inputmode="decimal">
       <label for="chs">STT on option sell (%)</label>
@@ -176,7 +180,7 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note">Educational tool, not investment advice. No accuracy is claimed. Options buying is high risk and you can lose the whole premium. The edge of this strategy is NOT proven; validate with Backtest and paper trading first.</p>
 
       <h3>1. What the app does</h3>
-      <p class="note">Nifty and Bank Nifty (and Sensex if you switch it on in Settings), CE or PE BUYING only, ATM or 1-strike OTM. Strict signals (Tier A): max 2 per day, and "No Trade" when unclear. Data: Upstox (main), Angel One (optional spot cross-check).</p>
+      <p class="note">Nifty and Bank Nifty (and Sensex if you switch it on in Settings), CE or PE BUYING only, ATM or 1-strike OTM. Strict signals (Tier A): max 2 per day by default (you can set 1 to 5 in Settings), and "No Trade" when unclear. Data: Upstox (main), Angel One (optional spot cross-check).</p>
 
       <h3>2. Signal: 6-factor score (5-minute candles)</h3>
       <p class="note">Each factor is +1 (bullish), -1 (bearish) or 0:<br>
@@ -187,7 +191,7 @@ details summary{cursor:pointer;font-weight:700}
       <b>Setup strength 0-100:</b> score x 10, +15 opening-range agrees, +10 15m trend agrees, +5 PCR agrees, +5 VIX &le; 18, +5 trending market. It is NOT a win probability.</p>
 
       <h3>3. Gates (any one fails = No Trade)</h3>
-      <p class="note">Time window 9:30-14:30. Max 2 Tier A signals a day. No stacking while a trade is open. 15-min cooldown after a loss; stop after 2 losses in a row. Daily loss limit = 2 x risk per trade (Zero-Hero worst case included). Expiry day: no fresh buys after 1:30 PM. India VIX &le; 24. Angel vs Upstox spot difference &le; 0.1%. Duplicate-direction signal blocked for 30 min, opposite direction for 20 min. Data health check.<br>
+      <p class="note">Time window 9:30-14:30. Max Tier A signals a day: 2 by default, 1 to 5 in Settings. Setups after the limit go to the Paper tab as paper-only Tier B. No stacking while a trade is open. 15-min cooldown after a loss; stop after 2 losses in a row. Daily loss limit = 2 x risk per trade (Zero-Hero worst case included). Expiry day: no fresh buys after 1:30 PM. India VIX &le; 24. Angel vs Upstox spot difference &le; 0.1%. Duplicate-direction signal blocked for 30 min, opposite direction for 20 min. Data health check.<br>
       Also: price not too far from EMA20 (0.5% Nifty / 0.7% Bank Nifty), no big OI wall within 0.3% of spot, expiry pin check (0.08%), IV percentile &le; 90, delta &ge; 0.40 (0.45 near expiry), bid-ask spread &le; 5%.<br>
       Optional filters (Settings, off by default): breakout confirmation, sideways filter, retest of the opening range. Turn on only if the A/B test helps.</p>
 
@@ -228,7 +232,7 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note">Journal tab, Filter shadow card. Every paper trade remembers which extra filters would also have allowed it (breakout confirm, retest, sideways filter, minimum score 5, strong breakout candle, rejection at EMA20 or the range level, engulfing near EMA20). When the trade closes, the app compares the trades a filter would keep against the ones it would block, using real option results. Nothing about the live signals changes. About 30 closed trades are needed before a result means anything. The three candle filters are also in the Backtest A/B list.</p>
 
       <h3>8g. Server scanner</h3>
-      <p class="note">A Supabase function runs every 5 minutes on market days, even when the phone is off. It scans Nifty, Bank Nifty and Sensex with the same rules, saves signals to the cloud and sends a Telegram alert for Tier A signals (max 2 a day). It uses a read-only Upstox Analytics Token, so it can never place an order. Why a scan gave No Trade is saved in the cloud table scan_log.</p>
+      <p class="note">A Supabase function runs every 5 minutes on market days, even when the phone is off. It scans Nifty, Bank Nifty and Sensex with the same rules, saves signals to the cloud and sends a Telegram alert for Tier A signals (max 2 a day by default, set with the MAX_SIGNALS secret). The Signal tab shows them under Server signals today, and still-valid ones are added to the Paper tab. It uses a read-only Upstox Analytics Token, so it can never place an order. Why a scan gave No Trade is saved in the cloud table scan_log.</p>
 
       <h3>8c. News agent</h3>
       <p class="note">Optional. Claude with web search lists today's events (RBI, results, macro data, global cues) in the Signal tab: once in the morning and on demand (max 3 a day). It is context only: a warning appears on a signal when a high/medium event is within 20 minutes, and the AI second opinion also sees it. It never blocks or creates a trade. It can be wrong or incomplete, so verify important events yourself.</p>
@@ -589,7 +593,7 @@ async function compute(s, demo, tierB) {
     rk.openForSymbol = paperList().some((t) => t.sym === s && t.tier === 'B' && PP.ACTIVE.includes(t.state));
     rk.recentSignals = tbList().filter((q) => q.sym === s).map((q) => ({ dir: q.dir, t: q.tMs }));
   }
-  const inp = Object.assign({}, d, { signalsToday, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) });
+  const inp = Object.assign({}, d, { signalsToday, maxSignals: cfg.maxSig || 2, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) });
   const r = E.analyze(inp);
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
   if (!demo && (d.warmErr || !(d.prevCandles && d.prevCandles.length))) r.notes.unshift('EMA warm-up history unavailable' + (d.warmErr ? ' (' + d.warmErr + ')' : '') + ': EMAs use today\'s candles only, so early-session signals are less reliable.');
@@ -723,6 +727,62 @@ async function cloudFlush() {
   } catch (e) { cloudMsg = 'Offline, will retry'; } finally { cloudBusy = false; }
 }
 const cloudIso = (ms) => new Date(ms || Date.now()).toISOString();
+/* ---------- Server signals: found by the cloud scanner, shown in the Signal tab. Still-valid ones become paper trades. Read-only, never orders. ---------- */
+let srvBusy = false, srvAt = 0, srvMsg = '';
+const srvRows = () => { const x = ld('sb_srv', null); return x && x.day === today() ? x.rows : []; };
+const srvValidMs = (r) => Date.parse(r.ts) + 30 * 60000;
+async function srvImport(r) { // returns 'added' | 'dup' | 'expired' | 'retry' | 'off'
+  const done = ld('sb_srvdone', []), id = r.ts + '|' + r.sym + '|' + r.tier;
+  if (done.includes(id)) return 'dup';
+  const mark = () => { done.push(id); sv('sb_srvdone', done.slice(-200)); };
+  if (Date.now() > srvValidMs(r)) { mark(); return 'expired'; }
+  if (cfg.paperOn === false) return 'off';
+  const t0 = Date.parse(r.ts);
+  if (paperList().some((x) => x.sym === r.sym && x.option === r.option && Math.abs(x.createdAt - t0) < 45 * 60000)) { mark(); return 'dup'; } // the app's own scan already made this one
+  let d; try { d = await loadLive(r.sym); } catch (e) { return 'retry'; }
+  const row = (d.chain || []).find((c) => c.strike === +r.strike), ce = r.option === 'CE';
+  const key = row ? (ce ? row.ceKey : row.peKey) : null, ltp = row ? (ce ? row.ceLtp : row.peLtp) : null;
+  if (!key) { mark(); return 'expired'; }
+  const c = r.ctx || {};
+  const sg = { option: r.option, strike: +r.strike, key, ltp: ltp || +r.entry_lo, entryLo: +r.entry_lo, entryHi: +r.entry_hi, sl: +r.sl, t1: +r.t1, t2: +r.t2,
+    indexInvalidation: c.invalidation, lots: 1, lotSize: c.lotSize || (INSTR[r.sym] || {}).lot || 1, tier: r.tier, strength: r.strength, indexName: nameOf(r.sym),
+    validUntil: E.hhmm(Math.min(E.istMin(t0) + 30, 885)) };
+  const t = createPaper(sg, r.sym, null, null);
+  if (t) { t.fromServer = true; t.srvTs = r.ts; t.ctx = { score: r.score, spot: +r.spot, vix: null, pcr: null, dte: null, er: null, ivPct: null, pcrAgree: null, factors: (c.checks || []).map((x) => x[1]) }; savePaper(paperList().map((x) => (x.id === t.id ? t : x))); }
+  mark(); return t ? 'added' : 'off';
+}
+async function srvSync(force) {
+  if (!cloudOk()) { srvMsg = ''; return; }
+  if (srvBusy || (!force && Date.now() - srvAt < 45000)) return;
+  srvBusy = true; srvAt = Date.now();
+  try {
+    const since = new Date(Date.parse(today() + 'T00:00:00+05:30')).toISOString();
+    const r = await nfetchRaw(cfg.cloudUrl, { 'Content-Type': 'application/json', 'x-app-key': cfg.cloudKey }, JSON.stringify({ kind: 'pull_signals', since }), 20000);
+    if (r.status !== 200) { srvMsg = r.status === 401 ? 'Cloud key rejected' : 'Server answered ' + r.status; return; }
+    const j = JSON.parse(r.body); if (!j.ok) { srvMsg = 'Server error'; return; }
+    sv('sb_srv', { day: today(), rows: j.rows || [], at: Date.now() }); srvMsg = 'Updated ' + hm();
+    let added = 0; for (const x of j.rows || []) { if ((await srvImport(x)) === 'added') added++; }
+    if (added && curTab === 'pp') renderPaper();
+  } catch (e) { srvMsg = 'Offline, will retry'; } finally { srvBusy = false; }
+}
+function renderSrv() {
+  const box = $('srvbox'); if (!box) return;
+  if (!cloudOk()) { box.innerHTML = '<p class="note">Turn on Cloud sync in Settings to see signals found by the cloud scanner here.</p>'; return; }
+  const rows = srvRows().slice().reverse(), now = Date.now(), fm = (x) => (x == null ? '-' : (+x).toFixed(2));
+  const paper = paperList();
+  let h = '<div class="card"><div class="j"><b>Server signals today</b><span class="note">' + esc(srvMsg || 'Not loaded yet') + '</span></div>';
+  if (!rows.length) h += '<p class="note">The cloud scanner has not found a setup today. It checks every 5 minutes, even when this app is closed.</p>';
+  rows.forEach((r) => {
+    const live = now <= srvValidMs(r), inPaper = paper.some((x) => x.srvTs === r.ts && x.sym === r.sym), tb = r.tier === 'B';
+    h += '<div class="chk"><span><b>' + hmOf(Date.parse(r.ts)) + ' ' + nameOf(r.sym) + ' ' + r.option + ' ' + r.strike + '</b> <span class="badge ' + (tb ? 'b-no' : 'b-up') + '">' + (tb ? 'TIER B' : 'TIER A') + '</span><br>Entry ' + fm(r.entry_lo) + '-' + fm(r.entry_hi) + ' | SL ' + fm(r.sl) + ' | T1 ' + fm(r.t1) + ' | T2 ' + fm(r.t2) +
+      '<br><em>Score ' + r.score + '/6, strength ' + (r.strength == null ? '-' : r.strength) + ' | ' + (live ? 'valid until ' + hmOf(srvValidMs(r)) : 'expired') + (tb ? ' | paper only' : '') + (inPaper ? ' | in Paper tab' : '') + '</em></span></div>';
+  });
+  h += '<p class="note">Alerts only. The app never places orders. Valid setups are added to the Paper tab by themselves.</p></div>';
+  box.innerHTML = h;
+}
+async function srvTick() { await srvSync(); renderSrv(); }
+setInterval(() => { if (!document.hidden) srvTick(); }, 60000);
+
 function cloudSignal(sg, s, r) {
   cloud('signals', [{ ts: cloudIso(), sym: s, tier: sg.tier || 'A', option: sg.option, strike: sg.strike, spot: r.spot, entry_lo: sg.entryLo, entry_hi: sg.entryHi, sl: sg.sl, t1: sg.t1, t2: sg.t2,
     score: r.score, strength: sg.strength == null ? null : sg.strength, lots: sg.lots, ctx: { checks: (r.checks || []).map((c) => [c.name, c.v, c.t]), snap: r.snap || {}, invalidation: sg.indexInvalidation, delta: sg.delta, spreadPct: sg.spreadPct }, source: 'app' }]);
@@ -878,7 +938,7 @@ function showLast(force) {
 // The app can stay open in the background while auto-scan works. Redraw whatever is on screen
 // when a scan finishes and when the app comes back to the foreground.
 function refreshViews() {
-  if (curTab === 'sig') { showLast(false); renderNews(); }
+  if (curTab === 'sig') { showLast(false); renderNews(); renderSrv(); srvTick(); }
   else if (curTab === 'pp') renderPaper();
   else if (curTab === 'jr') renderJournal();
   else if (curTab === 'ch') { chartRedraw(); chartSigList(); }
@@ -887,7 +947,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) refr
 window.addEventListener('pageshow', refreshViews);
 window.addEventListener('focus', refreshViews);
 applySensex();
-showLast(false); renderNews(); renderBtLog();
+showLast(false); renderNews(); renderBtLog(); renderSrv(); srvTick();
 
 function render(r, d, maxRiskRs) {
   const s = r.signal, sn = r.snap;
@@ -1391,10 +1451,10 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('clon').value = cfg.cloudOn ? '1' : '0'; $('clurl').value = cfg.cloudUrl || ''; $('clkey').value = cfg.cloudKey || ''; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('maxsig').value = cfg.maxSig || 2; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('clon').value = cfg.cloudOn ? '1' : '0'; $('clurl').value = cfg.cloudUrl || ''; $('clkey').value = cfg.cloudKey || ''; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('cltest').onclick = async () => { cfg.cloudUrl = $('clurl').value.trim(); cfg.cloudKey = $('clkey').value.trim(); $('clmsg').textContent = 'Testing...'; $('clmsg').textContent = await cloudTest(); };
 $('save').onclick = () => {
-  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', cloudOn: $('clon').value === '1', cloudUrl: $('clurl').value.trim(), cloudKey: $('clkey').value.trim(), agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', maxSig: Math.min(5, Math.max(1, parseInt($('maxsig').value, 10) || 2)), chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', cloudOn: $('clon').value === '1', cloudUrl: $('clurl').value.trim(), cloudKey: $('clkey').value.trim(), agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; guard.clear(); applySensex(); renderNews(); $('saved').textContent = 'Saved.';
 };
 </script>

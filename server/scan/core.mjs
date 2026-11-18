@@ -54,7 +54,7 @@ export async function scanOne(s, deps, state) {
   if (!d.candles.length) return { sym: s, noTrade: true, reason: 'No candles yet' };
   if (ageMin > 5) return { sym: s, noTrade: true, reason: 'Stale data (last candle ' + ageMin.toFixed(0) + ' min old)' };
   const rec = (tier) => state.recent.filter((x) => x.sym === s && x.tier === tier).map((x) => ({ dir: x.dir, t: x.tMs }));
-  const base = Object.assign({}, d, { maxRiskRs: deps.maxRiskRs || 0, openForSymbol: false, consecLosses: 0, dayPnl: 0, lastLossAgoMin: null });
+  const base = Object.assign({}, d, { maxSignals: deps.maxSignals || 2, maxRiskRs: deps.maxRiskRs || 0, openForSymbol: false, consecLosses: 0, dayPnl: 0, lastLossAgoMin: null });
   const rA = E.analyze(Object.assign({}, base, { signalsToday: state.signalsToday, recentSignals: rec('A'), flags: { tierB: false } }));
   if (!rA.noTrade && rA.signal && !rA.signal.indexOnly) return { sym: s, tier: 'A', r: rA, d, noTrade: false };
   if (deps.tierB) {
@@ -110,7 +110,7 @@ export async function runScan(deps) {
       const x = await scanOne(s, deps, state);
       if (x.noTrade) { out.push({ sym: s, noTrade: true, reason: x.reason, score: x.score, view: x.view, spot: x.spot }); continue; }
       const g = x.r.signal;
-      if (x.tier === 'A' && state.signalsToday >= 2) { out.push({ sym: s, noTrade: true, reason: 'Already 2 Tier A signals today' }); continue; }
+      if (x.tier === 'A' && state.signalsToday >= (deps.maxSignals || 2)) { out.push({ sym: s, noTrade: true, reason: 'Already ' + (deps.maxSignals || 2) + ' Tier A signals today' }); continue; }
       const row = { ts: new Date(now).toISOString(), sym: s, tier: x.tier, option: g.option, strike: g.strike, spot: x.r.spot, entry_lo: g.entryLo, entry_hi: g.entryHi, sl: g.sl, t1: g.t1, t2: g.t2,
         score: x.r.score, strength: g.strength == null ? null : g.strength, lots: g.lots,
         ctx: { checks: (x.r.checks || []).map((c) => [c.name, c.v, c.t]), snap: x.r.snap || {}, invalidation: g.indexInvalidation, delta: g.delta, spreadPct: g.spreadPct, riskPerLot: g.riskPerLot, lotSize: g.lotSize }, source: 'server' };

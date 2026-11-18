@@ -75,4 +75,11 @@ assert(r.results[0].error === 'Telegram error 403' && db.rows.length === 0 && se
 fail = false;
 r = await runScan({ now: NOW + 300000, upstox: mkUpstox(0.42, [], 110), db, notify: flaky, syms: ['NIFTY'] });
 assert(r.results[0].signal && sent.length === 1 && db.rows.length === 1, JSON.stringify(r));
+// 10) the daily cap is configurable; beyond it the setup is still saved, as paper-only Tier B with no Telegram alert
+db = mkDb([{ tier: 'A', sym: 'BANKNIFTY', option: 'PE', ts: new Date(NOW - 3600000).toISOString() }, { tier: 'A', sym: 'SENSEX', option: 'PE', ts: new Date(NOW - 3000000).toISOString() }]); sent = [];
+r = await runScan({ now: NOW, upstox: mkUpstox(0.42, []), db, notify: async (t) => sent.push(t), tierB: true, syms: ['NIFTY'], maxSignals: 2 });
+assert(/^B /.test(r.results[0].signal) && sent.length === 0 && db.rows[db.rows.length - 1].tier === 'B', 'beyond the cap -> Tier B only: ' + JSON.stringify(r));
+db = mkDb([{ tier: 'A', sym: 'BANKNIFTY', option: 'PE', ts: new Date(NOW - 3600000).toISOString() }, { tier: 'A', sym: 'SENSEX', option: 'PE', ts: new Date(NOW - 3000000).toISOString() }]); sent = [];
+r = await runScan({ now: NOW, upstox: mkUpstox(0.42, []), db, notify: async (t) => sent.push(t), tierB: true, syms: ['NIFTY'], maxSignals: 3 });
+assert(/^A /.test(r.results[0].signal) && sent.length === 1, 'cap 3 allows a third Tier A alert: ' + JSON.stringify(r));
 console.log('SCAN TESTS OK');

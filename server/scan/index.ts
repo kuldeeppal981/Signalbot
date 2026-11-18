@@ -61,6 +61,7 @@ Deno.serve(async (req: Request) => {
     const out = await runScan({
       now: Date.now(), upstox, notify, db, syms,
       maxRiskRs: parseFloat(Deno.env.get('MAX_RISK_RS') || '0') || 0,
+      maxSignals: Math.min(5, Math.max(1, parseInt(Deno.env.get('MAX_SIGNALS') || '2', 10) || 2)),
       tierB: (Deno.env.get('TIER_B') || '1') !== '0',
       dry: debug && url.searchParams.get('dry') === '1',
       force: debug && url.searchParams.get('force') === '1',

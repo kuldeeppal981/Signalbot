@@ -28,7 +28,7 @@
       if (signals >= opts.maxSignals) break;
       const res = e.analyze({
         symbol: opts.symbol, spot: candles[i].c, candles: candles.slice(0, i + 1), vix: null, chain: [], lotSize: 1,
-        nowMs, signalsToday: signals, indexOnly: true, maxRiskRs: 1, dayPnl: dayR, consecLosses: consec,
+        nowMs, signalsToday: signals, maxSignals: opts.maxSignals, indexOnly: true, maxRiskRs: 1, dayPnl: dayR, consecLosses: consec,
         lastLossAgoMin: lastLossT == null ? null : (nowMs - lastLossT) / 60000, recentSignals: recent, flags: opts.flags, prevAgg: opts.prevAgg,
       });
       if (res.noTrade || !res.signal) continue;
@@ -144,6 +144,8 @@
     { name: '+ Strong breakout candle', flags: { strongC: true } },
     { name: '+ Rejection at EMA20 / range level', flags: { reject: true } },
     { name: '+ Engulfing near EMA20', flags: { engulf: true } },
+    { name: 'Daily cap 3 signals', flags: {}, sim: { maxSignals: 3 } },
+    { name: 'Daily cap 5 signals', flags: {}, sim: { maxSignals: 5 } },
   ];
   // Ablation: neutralise one droppable factor (EMA9/20, 15m trend, momentum) with the min score lowered by 1.
   BT.ABLATION = [

@@ -124,7 +124,7 @@
     if (nm > 870) return stop('No new entries after 2:30 PM (theta and reversal risk).');
     const tierB = !!flg.tierB; // Tier B = weaker "setup forming" signal. Paper trading only, never a real-trade signal.
     if (tierB) { if ((inp.tierBToday || 0) >= 5) return stop('Already 5 Tier B setups today.'); }
-    else if (signalsToday >= 2) return stop('Already 2 signals today. Quality over quantity, try again tomorrow.');
+    else if (signalsToday >= (inp.maxSignals || 2)) return stop('Already ' + (inp.maxSignals || 2) + ' signals today. Quality over quantity, try again tomorrow.');
     if (inp.health && inp.health.block) return stop('Data health: ' + inp.health.block + ' Signal blocked.');
     if (inp.openForSymbol) return stop('There is already an open/pending trade on this index. No new signal (no stacking).');
     if (inp.lastLossAgoMin != null && inp.lastLossAgoMin < 15) return stop('Less than 15 minutes since the last loss. Cooling off to avoid revenge trading.');
