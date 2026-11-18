@@ -1,7 +1,7 @@
 // SignalBot scanner: runs every 5 minutes (pg_cron). Reads market data from Upstox (read-only Analytics Token),
 // runs the same rules engine as the app, saves signals and sends Telegram alerts. It never places orders.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { runScan } from './core.mjs';
+import { runScan, alertText } from './core.mjs';
 import E from './engine.mjs';
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -40,8 +40,16 @@ const db = {
   async logScan(row: Record<string, unknown>) { await sb.from('scan_log').insert(row); },
 };
 
+let lastDemo = 0;
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
+  if (url.searchParams.get('demo')) { // sample alert with made-up numbers, to preview the Telegram format (max 1 a minute)
+    if (Date.now() - lastDemo < 60000) return reply(200, { ok: false, error: 'wait a minute' });
+    lastDemo = Date.now();
+    const g = { option: 'PE', strike: 25250, strikeType: 'ATM', entryLo: 162, entryHi: 165.25, sl: 121.5, t1: 243, t2: 283.5, indexInvalidation: 25273, strength: 70, validUntil: '12:30', lotSize: 65, riskPerLot: 2632.5 };
+    try { await notify('\u{1F9EA} <b>DEMO ONLY</b> (made-up numbers, not a real signal)\n\n' + alertText('NIFTY', g, { spot: 25261.45, score: -4 }, 'A')); return reply(200, { ok: true, demo: true }); }
+    catch (e) { return reply(200, { ok: false, error: String((e as Error).message || e) }); }
+  }
   const keyOk = !!Deno.env.get('INGEST_KEY') && req.headers.get('x-app-key') === Deno.env.get('INGEST_KEY');
   if (url.searchParams.get('status')) { // last scan summary, no secrets
     const { data } = await sb.from('scan_log').select('ts,results').order('ts', { ascending: false }).limit(1);
