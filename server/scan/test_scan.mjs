@@ -30,7 +30,7 @@ let deps = { now: NOW, upstox: mkUpstox(0.42, log), db, notify: async (t) => sen
 let r = await runScan(deps);
 console.log(JSON.stringify(r.results));
 assert(r.ok && r.results[0].signal && /^A CE/.test(r.results[0].signal), JSON.stringify(r));
-assert.strictEqual(sent.length, 1); assert(/SIGNAL \(Tier A\): Nifty CE/.test(sent[0]) && /Entry/.test(sent[0]) && /SL/.test(sent[0]) && /stop-loss order/.test(sent[0]));
+assert.strictEqual(sent.length, 1); assert(/NIFTY CE<\/b>  \u2022 Tier A signal/.test(sent[0]) && /Entry/.test(sent[0]) && /Stop-loss:/.test(sent[0]) && /stop-loss order at your broker/.test(sent[0]));
 assert.strictEqual(db.rows.length, 1); assert(db.rows[0].source === 'server' && db.rows[0].tier === 'A' && db.rows[0].ctx.riskPerLot > 0); assert.strictEqual(db.logs.length, 1);
 console.log(sent[0]);
 

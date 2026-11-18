@@ -22,7 +22,7 @@ async function upstox(path: string) {
 async function notify(text: string) {
   const tok = Deno.env.get('TELEGRAM_BOT_TOKEN'), chat = Deno.env.get('TELEGRAM_CHAT_ID');
   if (!tok || !chat) throw new Error('Telegram secrets are not set');
-  const r = await fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'POST', headers: J, body: JSON.stringify({ chat_id: chat, text }) });
+  const r = await fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'POST', headers: J, body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', disable_web_page_preview: true }) });
   if (!r.ok) throw new Error('Telegram error ' + r.status);
 }
 

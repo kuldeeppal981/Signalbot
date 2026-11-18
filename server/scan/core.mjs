@@ -66,16 +66,27 @@ export async function scanOne(s, deps, state) {
   return { sym: s, noTrade: true, reason: rA.reason, score: rA.score == null ? null : rA.score, view: rA.view, spot: rA.spot };
 }
 
+const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const inr = (x) => 'Rs ' + Math.round(x).toLocaleString('en-IN');
+// Telegram message (HTML parse mode): short, bold labels, one fact per line.
 export function alertText(sym, g, r, tier) {
-  const nm = INSTR[sym].name;
+  const nm = INSTR[sym].name, ce = g.option === 'CE';
+  const head = (ce ? '\u{1F7E2}' : '\u{1F534}') + ' <b>' + esc(nm.toUpperCase()) + ' ' + g.option + '</b>  ' + (tier === 'A' ? '\u2022 Tier A signal' : '\u2022 Tier B (paper only)');
   const lines = [
-    (tier === 'A' ? 'SIGNAL (Tier A): ' : 'Setup (Tier B, paper only): ') + nm + ' ' + g.option,
-    g.strike + ' ' + g.option + ' (' + g.strikeType + ')  | Spot ' + f2(r.spot),
-    'Entry ' + f2(g.entryLo) + '-' + f2(g.entryHi) + '  SL ' + f2(g.sl) + '  T1 ' + f2(g.t1) + '  T2 ' + f2(g.t2),
-    'Score ' + r.score + '/6' + (g.strength != null ? '  Strength ' + g.strength : '') + '  Valid until ' + g.validUntil,
-    '1 lot risk about Rs ' + Math.round(g.riskPerLot) + ' (lot ' + g.lotSize + '). Check it fits your budget.',
-    'Index invalidation: ' + f2(g.indexInvalidation),
-    'Place the stop-loss order at the broker. Educational signal, not advice.',
+    head,
+    '',
+    '<b>Buy:</b> ' + g.strike + ' ' + g.option + ' (' + esc(g.strikeType) + ')',
+    '<b>Entry:</b> ' + f2(g.entryLo) + ' - ' + f2(g.entryHi),
+    '<b>Stop-loss:</b> ' + f2(g.sl) + '  (-25%)',
+    '<b>Target 1:</b> ' + f2(g.t1) + '  (+50%)',
+    '<b>Target 2:</b> ' + f2(g.t2) + '  (+75%)',
+    '',
+    '<b>Index:</b> ' + f2(r.spot) + '  |  exit if it closes ' + (ce ? 'below ' : 'above ') + f2(g.indexInvalidation),
+    '<b>Score:</b> ' + r.score + '/6  |  <b>Strength:</b> ' + (g.strength == null ? '-' : g.strength) + '/100',
+    '<b>Valid till:</b> ' + esc(g.validUntil) + '  |  exit if no move in 45 min',
+    '<b>Risk:</b> 1 lot (' + g.lotSize + ') = about ' + inr(g.riskPerLot),
+    '',
+    '<i>Put the stop-loss order at your broker. Educational signal, not advice.</i>',
   ];
   return lines.join('\n');
 }
