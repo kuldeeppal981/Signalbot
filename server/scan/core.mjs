@@ -59,7 +59,9 @@ export async function scanOne(s, deps, state) {
   if (!rA.noTrade && rA.signal && !rA.signal.indexOnly) return { sym: s, tier: 'A', r: rA, d, noTrade: false };
   if (deps.tierB) {
     const rB = E.analyze(Object.assign({}, base, { signalsToday: 0, tierBToday: state.tierBToday, recentSignals: rec('B'), flags: { tierB: true } }));
-    if (!rB.noTrade && rB.signal && !rB.signal.indexOnly) return { sym: s, tier: 'B', r: rB, d, noTrade: false };
+    const dirB = rB.signal && rB.signal.option === 'CE' ? 1 : -1;
+    const dupA = state.recent.some((q) => q.sym === s && q.tier === 'A' && q.dir === dirB && deps.now - q.tMs < 30 * 60000); // same idea as a Tier A alert already sent
+    if (!rB.noTrade && rB.signal && !rB.signal.indexOnly && !dupA) return { sym: s, tier: 'B', r: rB, d, noTrade: false };
   }
   return { sym: s, noTrade: true, reason: rA.reason, score: rA.score == null ? null : rA.score, view: rA.view, spot: rA.spot };
 }
@@ -101,10 +103,11 @@ export async function runScan(deps) {
       const row = { ts: new Date(now).toISOString(), sym: s, tier: x.tier, option: g.option, strike: g.strike, spot: x.r.spot, entry_lo: g.entryLo, entry_hi: g.entryHi, sl: g.sl, t1: g.t1, t2: g.t2,
         score: x.r.score, strength: g.strength == null ? null : g.strength, lots: g.lots,
         ctx: { checks: (x.r.checks || []).map((c) => [c.name, c.v, c.t]), snap: x.r.snap || {}, invalidation: g.indexInvalidation, delta: g.delta, spreadPct: g.spreadPct, riskPerLot: g.riskPerLot, lotSize: g.lotSize }, source: 'server' };
+      // Alert first: if Telegram fails, nothing is saved, so the next scan tries again instead of treating the signal as done.
+      if (x.tier === 'A' && !deps.dry) await deps.notify(alertText(s, g, x.r, 'A'));
       if (!deps.dry) await deps.db.insertSignal(row);
       state.recent.push({ sym: s, dir: g.option === 'CE' ? 1 : -1, tMs: now, tier: x.tier });
-      if (x.tier === 'A') { state.signalsToday++; if (!deps.dry) await deps.notify(alertText(s, g, x.r, 'A')); }
-      else state.tierBToday++;
+      if (x.tier === 'A') state.signalsToday++; else state.tierBToday++;
       out.push({ sym: s, signal: x.tier + ' ' + g.option + ' ' + g.strike });
     } catch (e) { out.push({ sym: s, error: String(e.message || e).slice(0, 160) }); }
   }
