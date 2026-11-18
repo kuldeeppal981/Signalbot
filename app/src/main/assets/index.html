@@ -159,6 +159,8 @@ details summary{cursor:pointer;font-weight:700}
       <p class="note">Check both with the A/B test in the Backtest tab first, and turn them on only if they help.</p>
       <label for="ppon">Paper trading (virtual trade as soon as a signal appears)</label>
       <select id="ppon"><option value="1">On</option><option value="0">Off</option></select>
+      <label for="cutoff">Last time for new entries</label>
+      <select id="cutoff"><option value="870">2:30 PM (default)</option><option value="885">2:45 PM</option><option value="900">3:00 PM</option></select>
       <label for="maxsig">Max Tier A signals per day (1 to 5, default 2)</label>
       <input id="maxsig" type="number" inputmode="numeric" min="1" max="5">
       <p class="note">This only limits real-trade signals. Setups that appear after the limit still go to the Paper tab as paper-only Tier B, so no data is lost.</p>
@@ -191,7 +193,7 @@ details summary{cursor:pointer;font-weight:700}
       <b>Setup strength 0-100:</b> score x 10, +15 opening-range agrees, +10 15m trend agrees, +5 PCR agrees, +5 VIX &le; 18, +5 trending market. It is NOT a win probability.</p>
 
       <h3>3. Gates (any one fails = No Trade)</h3>
-      <p class="note">Time window 9:30-14:30. Max Tier A signals a day: 2 by default, 1 to 5 in Settings. Setups after the limit go to the Paper tab as paper-only Tier B. No stacking while a trade is open. 15-min cooldown after a loss; stop after 2 losses in a row. Daily loss limit = 2 x risk per trade (Zero-Hero worst case included). Expiry day: no fresh buys after 1:30 PM. India VIX &le; 24. Angel vs Upstox spot difference &le; 0.1%. Duplicate-direction signal blocked for 30 min, opposite direction for 20 min. Data health check.<br>
+      <p class="note">Time window 9:30 to 2:30 PM by default (2:45 or 3:00 in Settings). Max Tier A signals a day: 2 by default, 1 to 5 in Settings. Setups after the limit go to the Paper tab as paper-only Tier B. No stacking while a trade is open. 15-min cooldown after a loss; stop after 2 losses in a row. Daily loss limit = 2 x risk per trade (Zero-Hero worst case included). Expiry day: no fresh buys after 1:30 PM. India VIX &le; 24. Angel vs Upstox spot difference &le; 0.1%. Duplicate-direction signal blocked for 30 min, opposite direction for 20 min. Data health check.<br>
       Also: price not too far from EMA20 (0.5% Nifty / 0.7% Bank Nifty), no big OI wall within 0.3% of spot, expiry pin check (0.08%), IV percentile &le; 90, delta &ge; 0.40 (0.45 near expiry), bid-ask spread &le; 5%.<br>
       Optional filters (Settings, off by default): breakout confirmation, sideways filter, retest of the opening range. Turn on only if the A/B test helps.</p>
 
@@ -593,7 +595,7 @@ async function compute(s, demo, tierB) {
     rk.openForSymbol = paperList().some((t) => t.sym === s && t.tier === 'B' && PP.ACTIVE.includes(t.state));
     rk.recentSignals = tbList().filter((q) => q.sym === s).map((q) => ({ dir: q.dir, t: q.tMs }));
   }
-  const inp = Object.assign({}, d, { signalsToday, maxSignals: cfg.maxSig || 2, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) });
+  const inp = Object.assign({}, d, { signalsToday, maxSignals: cfg.maxSig || 2, cutoffMin: cfg.cutoff || 870, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) });
   const r = E.analyze(inp);
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
   if (!demo && (d.warmErr || !(d.prevCandles && d.prevCandles.length))) r.notes.unshift('EMA warm-up history unavailable' + (d.warmErr ? ' (' + d.warmErr + ')' : '') + ': EMAs use today\'s candles only, so early-session signals are less reliable.');
@@ -746,7 +748,7 @@ async function srvImport(r) { // returns 'added' | 'dup' | 'expired' | 'retry' |
   const c = r.ctx || {};
   const sg = { option: r.option, strike: +r.strike, key, ltp: ltp || +r.entry_lo, entryLo: +r.entry_lo, entryHi: +r.entry_hi, sl: +r.sl, t1: +r.t1, t2: +r.t2,
     indexInvalidation: c.invalidation, lots: 1, lotSize: c.lotSize || (INSTR[r.sym] || {}).lot || 1, tier: r.tier, strength: r.strength, indexName: nameOf(r.sym),
-    validUntil: E.hhmm(Math.min(E.istMin(t0) + 30, 885)) };
+    validUntil: E.hhmm(Math.min(E.istMin(t0) + 30, 915)) };
   const t = createPaper(sg, r.sym, null, null);
   if (t) { t.fromServer = true; t.srvTs = r.ts; t.ctx = { score: r.score, spot: +r.spot, vix: null, pcr: null, dte: null, er: null, ivPct: null, pcrAgree: null, factors: (c.checks || []).map((x) => x[1]) }; savePaper(paperList().map((x) => (x.id === t.id ? t : x))); }
   mark(); return t ? 'added' : 'off';
@@ -896,7 +898,7 @@ async function autoTick() {
   if (nm >= 555 && nm <= 935) { try { await manageTrades(); } catch (e) {} }
   if (cfg.newsOn && !newsBusy && nm >= 525 && nm <= 900 && !newsLoad() && ld(newsRunsKey(), 0) < 1) newsRun().then(() => { if (curTab === 'sig') renderNews(); }).catch(() => {}); // once a day, in the morning
   if (nm > 930) { stopService(); autoMsg = 'Market closed. Open the app tomorrow morning and auto-scan will start by itself.'; return setAutoUi(); }
-  if (nm < 570 || nm > (cfg.zhOn ? 885 : 870)) { autoMsg = (nm < 570 ? 'Waiting for 9:30.' : 'No new entries after 2:30.') + ' ' + hm(); return setAutoUi(); }
+  if (nm < 570 || nm > Math.max(cfg.cutoff || 870, cfg.zhOn ? 885 : 0)) { autoMsg = (nm < 570 ? 'Waiting for 9:30.' : 'No new entries after ' + E.hhmm(cfg.cutoff || 870) + '.') + ' ' + hm(); return setAutoUi(); }
   scanning = true;
   const lines = [];
   try {
@@ -1079,7 +1081,7 @@ function chartSigList() {
 }
 async function chartScan() {
   const nm = E.istMin(Date.now());
-  if (ld('sb_auto', false) || scanning || !cfg.token || !marketLive() || nm < 570 || nm > (cfg.zhOn ? 885 : 870) || Date.now() - chScanAt < 60000) return;
+  if (ld('sb_auto', false) || scanning || !cfg.token || !marketLive() || nm < 570 || nm > Math.max(cfg.cutoff || 870, cfg.zhOn ? 885 : 0) || Date.now() - chScanAt < 60000) return;
   chScanAt = Date.now(); scanning = true;
   let msg;
   try { await manageTrades(); msg = 'Signal scan ' + hm() + ': ' + await scanSymbol(chSym); }
@@ -1451,10 +1453,10 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('maxsig').value = cfg.maxSig || 2; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('clon').value = cfg.cloudOn ? '1' : '0'; $('clurl').value = cfg.cloudUrl || ''; $('clkey').value = cfg.cloudKey || ''; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('maxsig').value = cfg.maxSig || 2; $('cutoff').value = String(cfg.cutoff || 870); $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('clon').value = cfg.cloudOn ? '1' : '0'; $('clurl').value = cfg.cloudUrl || ''; $('clkey').value = cfg.cloudKey || ''; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('cltest').onclick = async () => { cfg.cloudUrl = $('clurl').value.trim(); cfg.cloudKey = $('clkey').value.trim(); $('clmsg').textContent = 'Testing...'; $('clmsg').textContent = await cloudTest(); };
 $('save').onclick = () => {
-  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', maxSig: Math.min(5, Math.max(1, parseInt($('maxsig').value, 10) || 2)), chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', cloudOn: $('clon').value === '1', cloudUrl: $('clurl').value.trim(), cloudKey: $('clkey').value.trim(), agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', cutoff: parseInt($('cutoff').value, 10) || 870, maxSig: Math.min(5, Math.max(1, parseInt($('maxsig').value, 10) || 2)), chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', cloudOn: $('clon').value === '1', cloudUrl: $('clurl').value.trim(), cloudKey: $('clkey').value.trim(), agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; guard.clear(); applySensex(); renderNews(); $('saved').textContent = 'Saved.';
 };
 </script>

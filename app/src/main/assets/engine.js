@@ -121,7 +121,8 @@
 
     // Gates, in order. First failure = No Trade.
     if (nm < 570) return stop('No signals before 9:30. The opening range is still forming.');
-    if (nm > 870) return stop('No new entries after 2:30 PM (theta and reversal risk).');
+    const cutM = inp.cutoffMin || 870;
+    if (nm > cutM) return stop('No new entries after ' + E.hhmm(cutM).replace(/^(\d+):/, (m, h) => (h > 12 ? h - 12 : h) + ':') + ' PM (theta and reversal risk).');
     const tierB = !!flg.tierB; // Tier B = weaker "setup forming" signal. Paper trading only, never a real-trade signal.
     if (tierB) { if ((inp.tierBToday || 0) >= 5) return stop('Already 5 Tier B setups today.'); }
     else if (signalsToday >= (inp.maxSignals || 2)) return stop('Already ' + (inp.maxSignals || 2) + ' signals today. Quality over quantity, try again tomorrow.');
@@ -263,7 +264,7 @@
       sl: r05(p * 0.75), t1: r05(p * 1.5), t2: r05(p * 1.75),
       rr: '1:2 (T1), 1:3 (T2)',
       lotSize, indexInvalidation: Math.round(invalid),
-      validUntil: E.hhmm(Math.min(nm + 30, 885)),
+      validUntil: E.hhmm(Math.min(nm + 30, (inp.cutoffMin || 870) + 15)),
       lotCost: pick.ltp * lotSize,
     });
     if (vix != null && vix > 18) res.notes.push('VIX ' + vix.toFixed(1) + ' is high. Use half size.');

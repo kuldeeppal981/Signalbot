@@ -12,7 +12,7 @@ const f2 = (x) => (x == null ? '-' : (Math.round(x * 100) / 100).toFixed(2));
 // IST session gate: weekdays 09:50-15:00
 export function inSession(nowMs) {
   const d = new Date(nowMs + 19800000), wd = d.getUTCDay(), m = d.getUTCHours() * 60 + d.getUTCMinutes();
-  return wd >= 1 && wd <= 5 && m >= 590 && m <= 900;
+  return wd >= 1 && wd <= 5 && m >= 590 && m <= 915;
 }
 
 export async function loadLive(s, up, nowMs) {
@@ -54,7 +54,7 @@ export async function scanOne(s, deps, state) {
   if (!d.candles.length) return { sym: s, noTrade: true, reason: 'No candles yet' };
   if (ageMin > 5) return { sym: s, noTrade: true, reason: 'Stale data (last candle ' + ageMin.toFixed(0) + ' min old)' };
   const rec = (tier) => state.recent.filter((x) => x.sym === s && x.tier === tier).map((x) => ({ dir: x.dir, t: x.tMs }));
-  const base = Object.assign({}, d, { maxSignals: deps.maxSignals || 2, maxRiskRs: deps.maxRiskRs || 0, openForSymbol: false, consecLosses: 0, dayPnl: 0, lastLossAgoMin: null });
+  const base = Object.assign({}, d, { maxSignals: deps.maxSignals || 2, cutoffMin: deps.cutoffMin || 870, maxRiskRs: deps.maxRiskRs || 0, openForSymbol: false, consecLosses: 0, dayPnl: 0, lastLossAgoMin: null });
   const rA = E.analyze(Object.assign({}, base, { signalsToday: state.signalsToday, recentSignals: rec('A'), flags: { tierB: false } }));
   if (!rA.noTrade && rA.signal && !rA.signal.indexOnly) return { sym: s, tier: 'A', r: rA, d, noTrade: false };
   if (deps.tierB) {

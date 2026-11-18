@@ -24,11 +24,11 @@
       if (opts.stride > 1 && i % opts.stride) continue;
       const nowMs = candles[i].t + 60000, nm = e.istMin(nowMs);
       if (nm < Math.max(570, opts.startMin || 0)) continue; // startMin: test later start times (e.g. 615 = 10:15)
-      if (nm > 870) break;
+      if (nm > (opts.cutoffMin || 870)) break;
       if (signals >= opts.maxSignals) break;
       const res = e.analyze({
         symbol: opts.symbol, spot: candles[i].c, candles: candles.slice(0, i + 1), vix: null, chain: [], lotSize: 1,
-        nowMs, signalsToday: signals, maxSignals: opts.maxSignals, indexOnly: true, maxRiskRs: 1, dayPnl: dayR, consecLosses: consec,
+        nowMs, signalsToday: signals, maxSignals: opts.maxSignals, cutoffMin: opts.cutoffMin, indexOnly: true, maxRiskRs: 1, dayPnl: dayR, consecLosses: consec,
         lastLossAgoMin: lastLossT == null ? null : (nowMs - lastLossT) / 60000, recentSignals: recent, flags: opts.flags, prevAgg: opts.prevAgg,
       });
       if (res.noTrade || !res.signal) continue;
@@ -144,6 +144,8 @@
     { name: '+ Strong breakout candle', flags: { strongC: true } },
     { name: '+ Rejection at EMA20 / range level', flags: { reject: true } },
     { name: '+ Engulfing near EMA20', flags: { engulf: true } },
+    { name: 'Entry cutoff 3:00 PM', flags: {}, sim: { cutoffMin: 900 } },
+    { name: 'Entry cutoff 2:00 PM', flags: {}, sim: { cutoffMin: 840 } },
     { name: 'Daily cap 3 signals', flags: {}, sim: { maxSignals: 3 } },
     { name: 'Daily cap 5 signals', flags: {}, sim: { maxSignals: 5 } },
   ];
