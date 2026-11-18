@@ -141,6 +141,9 @@
     { name: 'Start at 10:15 (not 9:30)', flags: {}, sim: { startMin: 615 } },
     { name: 'EMA9 trail after +1R (45 min)', flags: {}, sim: { trail: true } },
     { name: 'EMA9 trail after +1R (90 min)', flags: {}, sim: { trail: true, timeStopMin: 90 } },
+    { name: '+ Strong breakout candle', flags: { strongC: true } },
+    { name: '+ Rejection at EMA20 / range level', flags: { reject: true } },
+    { name: '+ Engulfing near EMA20', flags: { engulf: true } },
   ];
   // Ablation: neutralise one droppable factor (EMA9/20, 15m trend, momentum) with the min score lowered by 1.
   BT.ABLATION = [

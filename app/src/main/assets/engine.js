@@ -169,6 +169,22 @@
       res.snap.er = er;
       if (er < (fl.erMin || 0.3)) return stop('Market is choppy/sideways (trend efficiency ' + er.toFixed(2) + '). No clear trend.');
     }
+    // Candle-shape filters (off by default; tested in the A/B backtest and in the Filter shadow on paper trades).
+    const kn = c5[c5.length - 1], kp = c5[c5.length - 2];
+    if (fl.strongC && kn) { // strong breakout candle: big body in the signal direction, small wick against it
+      const rng = kn.h - kn.l, body = (kn.c - kn.o) * dir, opp = dir > 0 ? kn.h - kn.c : kn.c - kn.l;
+      if (!(rng > 0 && body / rng >= 0.6 && opp / rng <= 0.2)) return stop('Last 5-min candle is not a strong candle in the signal direction (small body or long wick against it).');
+    }
+    if (fl.reject) { // rejection: one of the last 3 candles touched EMA20 or the opening-range level and closed back in the signal direction
+      const lv = [ema20, dir > 0 ? orHigh : orLow].filter((x) => x != null);
+      const ok = c5.slice(-3).some((k) => k.c * dir > k.o * dir && lv.some((x) => (dir > 0 ? k.l <= x * 1.0001 && k.c > x : k.h >= x * 0.9999 && k.c < x)));
+      if (!ok) return stop('No rejection candle at EMA20 or the opening-range level in the last 3 candles.');
+    }
+    if (fl.engulf) { // engulfing candle in the signal direction, near EMA20
+      const eng = kn && kp && kn.c * dir > kn.o * dir && kp.c * dir < kp.o * dir && (dir > 0 ? kn.c >= kp.o && kn.o <= kp.c : kn.c <= kp.o && kn.o >= kp.c);
+      const near = kn && kp && (dir > 0 ? Math.min(kp.l, kn.l) <= ema20 * 1.001 : Math.max(kp.h, kn.h) >= ema20 * 0.999);
+      if (!(eng && near)) return stop('No engulfing candle near EMA20 in the signal direction.');
+    }
     const extLimit = symbol === 'BANKNIFTY' ? 0.007 : 0.005;
     if (Math.abs(spot - ema20) / spot > extLimit) {
       return stop('Price is too far from EMA20 (extended). Wait for a pullback, do not chase.');

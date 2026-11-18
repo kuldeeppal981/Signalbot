@@ -224,6 +224,12 @@ details summary{cursor:pointer;font-weight:700}
       <h3>8e. Saved backtests</h3>
       <p class="note">Every Backtest, A/B test and Factor test is saved on the phone automatically (last 12, shown under the Backtest tab with a Show button). With Cloud sync on, the summary, breakdown and trade list also go to your Supabase table backtest_runs, so results can be reviewed later. The random-data sanity run is not saved.</p>
 
+      <h3>8f. Filter shadow and candle filters</h3>
+      <p class="note">Journal tab, Filter shadow card. Every paper trade remembers which extra filters would also have allowed it (breakout confirm, retest, sideways filter, minimum score 5, strong breakout candle, rejection at EMA20 or the range level, engulfing near EMA20). When the trade closes, the app compares the trades a filter would keep against the ones it would block, using real option results. Nothing about the live signals changes. About 30 closed trades are needed before a result means anything. The three candle filters are also in the Backtest A/B list.</p>
+
+      <h3>8g. Server scanner</h3>
+      <p class="note">A Supabase function runs every 5 minutes on market days, even when the phone is off. It scans Nifty, Bank Nifty and Sensex with the same rules, saves signals to the cloud and sends a Telegram alert for Tier A signals (max 2 a day). It uses a read-only Upstox Analytics Token, so it can never place an order. Why a scan gave No Trade is saved in the cloud table scan_log.</p>
+
       <h3>8c. News agent</h3>
       <p class="note">Optional. Claude with web search lists today's events (RBI, results, macro data, global cues) in the Signal tab: once in the morning and on demand (max 3 a day). It is context only: a warning appears on a signal when a high/medium event is within 20 minutes, and the AI second opinion also sees it. It never blocks or creates a trade. It can be wrong or incomplete, so verify important events yourself.</p>
 
@@ -245,6 +251,7 @@ details summary{cursor:pointer;font-weight:700}
 <script src="paper.js"></script>
 <script src="backtest.js"></script>
 <script src="learn.js"></script>
+<script src="shadow.js"></script>
 <script src="agent.js"></script>
 <script src="watch.js"></script>
 <script>
@@ -493,10 +500,11 @@ function riskState(s) {
     recentSignals: recent,
   };
 }
-function createPaper(sg, s, r) {
+function createPaper(sg, s, r, inp) {
   if (cfg.paperOn === false) return null;
   const t = PP.create(sg, { sym: s }, Date.now()); setTimeout(cloudPaper, 50);
   t.tier = sg.tier || 'A'; t.strength = sg.strength == null ? null : sg.strength;
+  if (inp && window.FilterShadow) { try { t.fs = FilterShadow.evaluate(E, inp, sg); } catch (e) {} } // which extra filters would also have allowed this trade
   if (r) { // remember the market context, so the Learning report can find patterns later
     const sn = r.snap || {}, ck = r.checks || [], pc = ck.find((c) => c.name === 'PCR');
     t.ctx = { score: r.score, vix: sn.vix == null ? null : sn.vix, pcr: sn.pcr == null ? null : sn.pcr, dte: sn.dte == null ? null : sn.dte, er: sn.er == null ? null : sn.er, ivPct: sn.ivPct == null ? null : sn.ivPct,
@@ -581,11 +589,12 @@ async function compute(s, demo, tierB) {
     rk.openForSymbol = paperList().some((t) => t.sym === s && t.tier === 'B' && PP.ACTIVE.includes(t.state));
     rk.recentSignals = tbList().filter((q) => q.sym === s).map((q) => ({ dir: q.dir, t: q.tMs }));
   }
-  const r = E.analyze(Object.assign({}, d, { signalsToday, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) }));
+  const inp = Object.assign({}, d, { signalsToday, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) });
+  const r = E.analyze(inp);
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
   if (!demo && (d.warmErr || !(d.prevCandles && d.prevCandles.length))) r.notes.unshift('EMA warm-up history unavailable' + (d.warmErr ? ' (' + d.warmErr + ')' : '') + ': EMAs use today\'s candles only, so early-session signals are less reliable.');
   if (d.angelErr) r.notes.unshift('Angel cross-check failed (' + d.angelErr + '). Running on Upstox data only.');
-  return { r, d, maxRiskRs };
+  return { r, d, maxRiskRs, inp };
 }
 async function run(demo) {
   const out = $('out'), go = $('go');
@@ -670,7 +679,7 @@ async function scanSymbol(s) {
   logSignal(sg, s, x.r.spot); cloudSignal(sg, s, x.r);
   if (!done.some((q) => q.key === key) && done.length < 2) {
     done.push({ key, t: hm(), tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, sym: s }); sv(notifKey(), done);
-    const pt = createPaper(sg, s, x.r);
+    const pt = createPaper(sg, s, x.r, x.inp);
     sv('sb_last', { date: today(), time: hm(), r: x.r, d: { expiry: x.d.expiry, demo: false, autoPaper: !!pt }, maxRiskRs: x.maxRiskRs });
     const cc = capCheck(sg);
     const txt = sg.strike + ' ' + sg.option + ' (' + sg.strikeType + ') | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | T1 ' + f2(sg.t1) +
@@ -814,7 +823,7 @@ async function tierBScan(s, nm, x) {
     const sg = y.r.signal, a = tbList(), dirB = sg.option === 'CE' ? 1 : -1;
     if (a.some((q) => q.sym === s && q.dir === dirB && Date.now() - q.tMs < 30 * 60000) || paperList().some((t) => t.sym === s && t.tier === 'B' && PP.ACTIVE.includes(t.state))) return; // no duplicates / stacking
     a.push({ sym: s, key: s + sg.option + sg.strike, tMs: Date.now(), dir: sg.option === 'CE' ? 1 : -1, strength: sg.strength }); sv(tbKey(), a);
-    createPaper(sg, s, y.r); cloudSignal(sg, s, y.r);
+    createPaper(sg, s, y.r, y.inp); cloudSignal(sg, s, y.r);
     if (hasNative()) window.Native.notify('SETUP FORMING (paper only): ' + sg.indexName + ' ' + sg.option, sg.strike + ' ' + sg.option + ' | strength ' + sg.strength + '/100 | Entry ' + f2(sg.entryLo) + '-' + f2(sg.entryHi) + ' | SL ' + f2(sg.sl) + ' | NOT a real-trade signal');
     if (curTab === 'pp') renderPaper();
   } catch (e) {}
@@ -1283,6 +1292,16 @@ $('btfac').onclick = btFactors;
 
 /* ---------- journal ---------- */
 const TAGS = [{ n: 'Followed the plan', good: 1 }, { n: 'Exited early out of fear' }, { n: 'Moved/removed the SL' }, { n: 'Late entry' }, { n: 'Overtrade / revenge' }, { n: 'Oversized' }, { n: 'SL hit, then price reversed' }];
+function renderFilterShadow() {
+  const box = $('fsout'); if (!box) return;
+  const T = FilterShadow.table(paperList()), rr = (x) => (x == null ? '-' : (x >= 0 ? '+' : '') + x.toFixed(2) + 'R'), pc = (x) => (x == null ? '-' : Math.round(x * 100) + '%');
+  const sec = (k) => k.n ? k.n + ' trades, ' + pc(k.win) + ', ' + rr(k.expR) : 'none';
+  let h = '<p class="note">Each paper trade remembers which extra filters would also have allowed it. When trades close, they are split into "filter would keep it" and "filter would block it", using real option results. No extra trades, no extra risk. A result needs about 30 closed trades before it means anything.</p>';
+  if (!T.n) return void (box.innerHTML = h + '<p class="note">No closed paper trades with filter data yet. They appear after the next paper trades close.</p>');
+  h += '<div class="kv"><span>All closed paper trades</span><span>' + sec(T.all) + '</span></div>';
+  T.rows.forEach((r) => { h += '<div class="chk"><span><b>' + esc(r.name) + '</b><br>Keeps: ' + sec(r.kept) + '<br>Blocks: ' + sec(r.blocked) + '<br><em>' + esc(r.verdict) + '</em></span></div>'; });
+  box.innerHTML = h;
+}
 function renderJournal() {
   const j = ld('sb_journal', []);
   const done = j.filter((x) => x.exit != null);
@@ -1296,6 +1315,7 @@ function renderJournal() {
   h += '<div class="card"><div class="j"><b>Learning report</b><span class="badge b-no">COACH</span></div>' +
     '<p class="note">The app studies your paper trades, journal tags and No-Trade reasons, finds patterns, and writes a report. It never changes the strategy by itself. Copy the report and send it to Claude to decide what to improve, then test any idea in Backtest first.</p>' +
     '<button class="btn" id="lngo">Generate report</button><div id="lnout"></div></div>';
+  h += '<div class="card"><div class="j"><b>Filter shadow</b><span class="badge b-no">TEST</span></div><div id="fsout"></div></div>';
   const openW = j.filter((x) => x.exit == null && x.key && x.date === today());
   if (openW.length) h += '<div class="card"><div class="j"><b>Trade Watcher</b><span class="badge b-up">ON</span></div><p class="note">Watching ' + openW.length + ' open trade(s) every minute while the app is running (auto-scan on). It only sends alerts. <b>Place a stop-loss order at your broker right after you enter</b>: that is the real protection, an alert can be late.</p><button class="btn ghost" id="wtnow">Check now</button></div>';
   const dl = ld(dlKey(), []);
@@ -1332,6 +1352,7 @@ function renderJournal() {
     h += '</div>';
   });
   $('t-jr').innerHTML = h;
+  renderFilterShadow();
   const wn = $('wtnow'); if (wn) wn.onclick = async () => { wn.textContent = 'Checking...'; try { await watchReal(); } catch (e) {} renderJournal(); };
   $('t-jr').querySelectorAll('button[data-en]').forEach((b) => b.onclick = () => {
     const v = parseFloat($('en' + b.dataset.en).value); if (!(v > 0)) return;
