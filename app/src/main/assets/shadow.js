@@ -12,11 +12,13 @@
     { key: 'strongC', name: 'Strong breakout candle', flags: { strongC: true } },
     { key: 'reject', name: 'Rejection at EMA20 / range level', flags: { reject: true } },
     { key: 'engulf', name: 'Engulfing near EMA20', flags: { engulf: true } },
+    { key: 'oi', name: 'OI does not contradict the signal', oi: true },
   ];
   // inp = the exact input the app gave to E.analyze for this setup; sg = the signal it produced.
   S.evaluate = function (E, inp, sg) {
     const out = {};
     S.VARIANTS.forEach((v) => {
+      if (v.oi) return; // OI is judged from the OI record on the trade, not by re-running the strategy
       try {
         const r = E.analyze(Object.assign({}, inp, { flags: Object.assign({}, inp.flags || {}, v.flags || {}) }));
         out[v.key] = !!(!r.noTrade && r.signal && r.signal.option === sg.option && (!v.scoreMin || Math.abs(r.score) >= v.scoreMin));

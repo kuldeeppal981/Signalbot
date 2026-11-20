@@ -161,6 +161,8 @@ details summary{cursor:pointer;font-weight:700}
       <select id="ppon"><option value="1">On</option><option value="0">Off</option></select>
       <label for="cutoff">Last time for new entries</label>
       <select id="cutoff"><option value="870">2:30 PM (default)</option><option value="885">2:45 PM</option><option value="900">3:00 PM</option></select>
+      <label for="oimode">OI Intelligence</label>
+      <select id="oimode"><option value="shadow">Shadow (show and record only)</option><option value="off">Off</option></select>
       <label for="maxsig">Max Tier A signals per day (1 to 5, default 2)</label>
       <input id="maxsig" type="number" inputmode="numeric" min="1" max="5">
       <p class="note">This only limits real-trade signals. Setups that appear after the limit still go to the Paper tab as paper-only Tier B, so no data is lost.</p>
@@ -235,6 +237,8 @@ details summary{cursor:pointer;font-weight:700}
 
       <h3>8g. Server scanner</h3>
       <p class="note">A Supabase function runs every 5 minutes on market days, even when the phone is off. It scans Nifty, Bank Nifty and Sensex with the same rules, saves signals to the cloud and sends a Telegram alert for Tier A signals (max 2 a day by default, set with the MAX_SIGNALS secret). The Signal tab shows them under Server signals today, and still-valid ones are added to the Paper tab. It uses a read-only Upstox Analytics Token, so it can never place an order. Why a scan gave No Trade is saved in the cloud table scan_log.</p>
+      <h3>8h. OI Intelligence (shadow mode)</h3>
+      <p class="note">Reads the option chain: PCR, where Call and Put OI is concentrated (resistance and support), and whether OI is being built or unwound while the option premium rises or falls. The four types are long buildup, short buildup, short covering and long unwinding, judged separately for Calls and Puts. Changes are measured against an earlier snapshot taken in the app (15 to 120 minutes old) or, if none exists yet, against the broker's previous-day OI and close. A single snapshot is never classified. The result is a score from -2 to +2 built from three separate parts (PCR, buildup, levels), so nothing is counted twice, and it is marked CONFLICT when the parts disagree. It is shown inside the signal screen and saved on each paper trade. In shadow mode it never creates, changes or blocks a signal. The Filter shadow table in Journal then shows, on real paper results, whether trades that OI contradicted did worse. Active filtering stays off until that data supports it. If OI data is missing or stale, it says so and the strategy carries on unchanged. Settings: OI Intelligence On (shadow) or Off.</p>
 
       <h3>8c. News agent</h3>
       <p class="note">Optional. Claude with web search lists today's events (RBI, results, macro data, global cues) in the Signal tab: once in the morning and on demand (max 3 a day). It is context only: a warning appears on a signal when a high/medium event is within 20 minutes, and the AI second opinion also sees it. It never blocks or creates a trade. It can be wrong or incomplete, so verify important events yourself.</p>
@@ -258,6 +262,7 @@ details summary{cursor:pointer;font-weight:700}
 <script src="backtest.js"></script>
 <script src="learn.js"></script>
 <script src="shadow.js"></script>
+<script src="oi.js"></script>
 <script src="agent.js"></script>
 <script src="watch.js"></script>
 <script>
@@ -394,18 +399,18 @@ async function loadLive(s) {
   const chain = (ch.data || []).map((r) => ({
     strike: r.strike_price,
     ceKey: r.call_options && r.call_options.instrument_key, ceLtp: r.call_options && r.call_options.market_data.ltp,
-    ceOi: r.call_options && r.call_options.market_data.oi,
+    ceOi: r.call_options && r.call_options.market_data.oi, cePrevOi: r.call_options && r.call_options.market_data.prev_oi, cePrevClose: r.call_options && r.call_options.market_data.close_price, ceVol: r.call_options && r.call_options.market_data.volume,
     ceDelta: r.call_options && r.call_options.option_greeks ? r.call_options.option_greeks.delta : null,
     ceIv: r.call_options && r.call_options.option_greeks ? r.call_options.option_greeks.iv : null,
     ceBid: r.call_options && r.call_options.market_data.bid_price, ceAsk: r.call_options && r.call_options.market_data.ask_price,
     peKey: r.put_options && r.put_options.instrument_key, peLtp: r.put_options && r.put_options.market_data.ltp,
-    peOi: r.put_options && r.put_options.market_data.oi,
+    peOi: r.put_options && r.put_options.market_data.oi, pePrevOi: r.put_options && r.put_options.market_data.prev_oi, pePrevClose: r.put_options && r.put_options.market_data.close_price, peVol: r.put_options && r.put_options.market_data.volume,
     peDelta: r.put_options && r.put_options.option_greeks ? r.put_options.option_greeks.delta : null,
     peIv: r.put_options && r.put_options.option_greeks ? r.put_options.option_greeks.iv : null,
     peBid: r.put_options && r.put_options.market_data.bid_price, peAsk: r.put_options && r.put_options.market_data.ask_price,
   }));
   return { symbol: s, spot, vix, chain, chainSpot: ((ch.data || [])[0] || {}).underlying_spot_price, lotSize: lotSize || INSTR[s].lot, expiry: exps[0],
-    candles: E.parseCandles((cd.data && cd.data.candles) || []), nowMs: Date.now(), prevCandles, warmErr };
+    candles: E.parseCandles((cd.data && cd.data.candles) || []), nowMs: Date.now(), chainTs: Date.now(), prevCandles, warmErr };
 }
 
 /* ---------- demo data (synthetic, for UI testing only) ---------- */
@@ -510,7 +515,9 @@ function createPaper(sg, s, r, inp) {
   if (cfg.paperOn === false) return null;
   const t = PP.create(sg, { sym: s }, Date.now()); setTimeout(cloudPaper, 50);
   t.tier = sg.tier || 'A'; t.strength = sg.strength == null ? null : sg.strength;
-  if (inp && window.FilterShadow) { try { t.fs = FilterShadow.evaluate(E, inp, sg); } catch (e) {} } // which extra filters would also have allowed this trade
+  if (r && r.oi && window.OI) { try { const row = (r.oiChain || []).find((c) => c.strike === sg.strike); t.oi = OI.brief(r.oi, sg.option === 'CE' ? 1 : -1, row, sg.option, r.snap && r.snap.dte, cfg.oiCfg); } catch (e) {} }
+  if (inp && window.FilterShadow) { try { t.fs = FilterShadow.evaluate(E, inp, sg); } catch (e) {} }
+  if (t.fs && t.oi && t.oi.conf !== 'UNAVAILABLE') t.fs.oi = !(t.oi.conf === 'CONTRADICTS' || t.oi.conf === 'CONFLICT'); // OI shadow: would OI have kept this trade? // which extra filters would also have allowed this trade
   if (r) { // remember the market context, so the Learning report can find patterns later
     const sn = r.snap || {}, ck = r.checks || [], pc = ck.find((c) => c.name === 'PCR');
     t.ctx = { score: r.score, vix: sn.vix == null ? null : sn.vix, pcr: sn.pcr == null ? null : sn.pcr, dte: sn.dte == null ? null : sn.dte, er: sn.er == null ? null : sn.er, ivPct: sn.ivPct == null ? null : sn.ivPct,
@@ -578,6 +585,41 @@ async function manageTrades() {
 }
 const tbKey = () => 'sb_tb_' + today();
 const tbList = () => ld(tbKey(), []);
+// OI Intelligence (shadow mode): works out the OI view for the current chain and keeps timestamped snapshots
+// so that changes are measured against an earlier snapshot, never a single one. It never changes a signal.
+function oiSnaps(sym) { const x = ld('sb_oisnap_' + sym, null); return x && x.day === today() ? x.list : []; }
+function oiRun(s, d, r, demo) {
+  try {
+    if (!window.OI || cfg.oiMode === 'off' || demo) return null;
+    const now = Date.now(), list = oiSnaps(s);
+    const res = OI.analyze({ chain: d.chain, spot: d.spot, nowMs: now, chainTs: d.chainTs || now, prevSnap: OI.pickPrev(list, now, cfg.oiCfg) }, cfg.oiCfg);
+    if (res.status === 'AVAILABLE' && (!list.length || now - list[list.length - 1].t >= 5 * 60000)) { list.push(OI.snap(d.chain, d.spot, now)); sv('sb_oisnap_' + s, { day: today(), list: list.slice(-30) }); }
+    r.oiChain = d.chain; return res;
+  } catch (e) { return null; }
+}
+function oiCard(r, sg) { // compact, expandable OI section (shadow mode)
+  const o = r.oi; if (!o) return '';
+  const dir = sg ? (sg.option === 'CE' ? 1 : -1) : 0, cf = dir ? OI.confirm(o, dir, cfg.oiCfg) : null;
+  const cls = o.status !== 'AVAILABLE' ? 'b-no' : /BULL/.test(o.direction) ? 'b-up' : /BEAR/.test(o.direction) ? 'b-dn' : 'b-no';
+  const f = (v, n) => (v == null ? '-' : v.toFixed(n == null ? 2 : n)), pc = (v) => (v == null ? '-' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
+  const fresh = o.lastUpdated ? Math.max(0, Math.round((Date.now() - Date.parse(o.lastUpdated)) / 60000)) : null;
+  let h = '<div class="card"><details><summary style="cursor:pointer"><b>OI Intelligence</b> <span class="badge ' + cls + '">' + (o.status === 'AVAILABLE' ? o.direction.replace('_', ' ') + ' ' + (o.score > 0 ? '+' : '') + o.score : 'UNAVAILABLE') + '</span>' +
+    (cf && cf.status !== 'UNAVAILABLE' ? ' <span class="note">' + cf.status + '</span>' : '') + ' <span class="note">shadow</span></summary>';
+  if (o.status !== 'AVAILABLE') return h + '<p class="note">' + o.reason + (o.missing && o.missing.length ? ' (missing: ' + o.missing.join(', ') + ')' : '') + '. The strategy is not affected.</p></details></div>';
+  h += '<div class="kv" style="margin-top:8px">' +
+    '<span>PCR (OI)</span><span>' + f(o.pcr.value) + ' ' + o.pcr.trend.toLowerCase() + ', ' + o.pcr.interpretation.toLowerCase() + '</span>' +
+    '<span>Call buildup</span><span>' + o.buildup.call.replace('_', ' ').toLowerCase() + ' (OI ' + pc(o.buildup.callOiPct) + ', premium ' + pc(o.buildup.callPremPct) + ')</span>' +
+    '<span>Put buildup</span><span>' + o.buildup.put.replace('_', ' ').toLowerCase() + ' (OI ' + pc(o.buildup.putOiPct) + ', premium ' + pc(o.buildup.putPremPct) + ')</span>' +
+    '<span>Support</span><span>' + (o.support.primary || '-') + (o.support.secondary ? ' / ' + o.support.secondary : '') + ' ' + (o.support.strength ? '(' + o.support.strength.toLowerCase() + ', ' + pc(o.support.distancePct) + ')' : '') + '</span>' +
+    '<span>Resistance</span><span>' + (o.resistance.primary || '-') + (o.resistance.secondary ? ' / ' + o.resistance.secondary : '') + ' ' + (o.resistance.strength ? '(' + o.resistance.strength.toLowerCase() + ', ' + pc(o.resistance.distancePct) + ')' : '') + '</span>' +
+    '<span>Reference</span><span>' + (o.basis === 'snapshot' ? 'earlier snapshot' : o.basis === 'day' ? 'previous-day OI' : 'none') + '</span>' +
+    '<span>Data</span><span>' + (fresh == null ? '-' : fresh + ' min old') + '</span></div>';
+  if (cf && cf.status !== 'UNAVAILABLE') h += '<p class="note">With this signal: <b>' + cf.status + '</b>. ' + cf.note + (cf.confidenceDelta ? '. It would lower confidence by ' + (-cf.confidenceDelta) + ' points' : '') + (cf.wouldBlock ? ' and would block the entry if OI filtering were active' : '') + '.</p>';
+  if (o.conflict) h += '<p class="note" style="color:var(--warn)">OI_CONFLICT: the OI parts disagree with each other.</p>';
+  const ex = sg && r.snap ? OI.expiryRisk((r.oiChain || []).find((c) => c.strike === sg.strike), sg.option, r.snap.dte, cfg.oiCfg) : [];
+  (o.warnings || []).concat(ex).forEach((x) => { h += '<p class="note" style="color:var(--warn)">' + x + '</p>'; });
+  return h + '<p class="note">Shadow mode: OI is shown and recorded only. It does not change or block any signal until backtests and paper results support it.</p></details></div>';
+}
 async function compute(s, demo, tierB) {
   if (!demo && !cfg.token) throw new Error('First enter your Upstox token in Settings, or try the demo.');
   const d = demo ? demoData(s) : await loadLive(s);
@@ -597,6 +639,7 @@ async function compute(s, demo, tierB) {
   }
   const inp = Object.assign({}, d, { signalsToday, maxSignals: cfg.maxSig || 2, cutoffMin: cfg.cutoff || 870, maxRiskRs, tierBToday: tbList().length, flags: { confirm: !!cfg.flConfirm, regime: !!cfg.flRegime, retest: !!cfg.flRetest, tierB: !!tierB } }, rk, { ivHistory: ivStore.filter((x) => x.d !== today()).map((x) => x.iv) });
   const r = E.analyze(inp);
+  r.oi = oiRun(s, d, r, demo);
   if (!demo && r.snap.atmIv && !ivStore.some((x) => x.d === today())) { ivStore.push({ d: today(), iv: r.snap.atmIv }); sv(ivKey, ivStore.slice(-30)); }
   if (!demo && (d.warmErr || !(d.prevCandles && d.prevCandles.length))) r.notes.unshift('EMA warm-up history unavailable' + (d.warmErr ? ' (' + d.warmErr + ')' : '') + ': EMAs use today\'s candles only, so early-session signals are less reliable.');
   if (d.angelErr) r.notes.unshift('Angel cross-check failed (' + d.angelErr + '). Running on Upstox data only.');
@@ -990,6 +1033,7 @@ function render(r, d, maxRiskRs) {
       '<p class="note">Last candle ' + (m.lastCandleAgeMin == null ? '-' : m.lastCandleAgeMin.toFixed(1)) + ' min old | missing ' + (m.missing || 0) + ' | broker diff ' + (m.brokerDiff == null ? 'NA' : (m.brokerDiff * 100).toFixed(2) + '%') + '</p>' +
       hh.issues.map((i) => '<p class="note" style="color:var(--' + (i.level === 'bad' ? 'dn' : 'warn') + ')">' + i.text + '</p>').join('') + '</div>';
   }
+  h += oiCard(r, s);
   h += '<div class="card"><b>Checklist (score ' + (r.score == null ? '-' : r.score) + '/6)</b>' +
     r.checks.map((c) => '<div class="chk"><span><i class="dot ' + (c.v > 0 ? 'u' : c.v < 0 ? 'd' : '') + '"></i>' + c.name + '</span><em>' + c.t + '</em></div>').join('') + '</div>';
   h += '<div class="card"><b>Levels</b><div class="kv" style="margin-top:8px">' +
@@ -1453,10 +1497,10 @@ function renderJournal() {
 }
 
 /* ---------- settings ---------- */
-$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('maxsig').value = cfg.maxSig || 2; $('cutoff').value = String(cfg.cutoff || 870); $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('clon').value = cfg.cloudOn ? '1' : '0'; $('clurl').value = cfg.cloudUrl || ''; $('clkey').value = cfg.cloudKey || ''; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
+$('btcap').value = cfg.capital; $('btrisk').value = cfg.riskPct; $('flc').value = cfg.flConfirm ? '1' : '0'; $('flr').value = cfg.flRegime ? '1' : '0'; $('flt').value = cfg.flRetest ? '1' : '0'; $('ppon').value = cfg.paperOn === false ? '0' : '1'; $('maxsig').value = cfg.maxSig || 2; $('cutoff').value = String(cfg.cutoff || 870); $('oimode').value = cfg.oiMode === 'off' ? 'off' : 'shadow'; $('chb').value = cfg.chBrok; $('chs').value = cfg.chStt; $('zhon').value = cfg.zhOn ? '1' : '0'; $('zhb').value = cfg.zhBudget || 0; $('sxon').value = cfg.sensexOn ? '1' : '0'; $('nwon').value = cfg.newsOn ? '1' : '0'; $('clon').value = cfg.cloudOn ? '1' : '0'; $('clurl').value = cfg.cloudUrl || ''; $('clkey').value = cfg.cloudKey || ''; $('agon').value = cfg.agOn ? '1' : '0'; $('agprov').value = cfg.agProv || 'claude'; $('agkey').value = cfg.agKey || ''; $('agmodel').value = cfg.agModel || ''; $('agcap').value = cfg.agCap || 10; $('agnote').value = cfg.agNote || ''; $('tok').value = cfg.token; $('ak').value = cfg.aKey; $('acc').value = cfg.aCode; $('apin').value = cfg.aPin; $('atotp').value = cfg.aTotp; $('cap').value = cfg.capital; $('rp').value = cfg.riskPct;
 $('cltest').onclick = async () => { cfg.cloudUrl = $('clurl').value.trim(); cfg.cloudKey = $('clkey').value.trim(); $('clmsg').textContent = 'Testing...'; $('clmsg').textContent = await cloudTest(); };
 $('save').onclick = () => {
-  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', cutoff: parseInt($('cutoff').value, 10) || 870, maxSig: Math.min(5, Math.max(1, parseInt($('maxsig').value, 10) || 2)), chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', cloudOn: $('clon').value === '1', cloudUrl: $('clurl').value.trim(), cloudKey: $('clkey').value.trim(), agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
+  cfg = { flConfirm: $('flc').value === '1', flRegime: $('flr').value === '1', flRetest: $('flt').value === '1', paperOn: $('ppon').value === '1', cutoff: parseInt($('cutoff').value, 10) || 870, oiMode: $('oimode').value, maxSig: Math.min(5, Math.max(1, parseInt($('maxsig').value, 10) || 2)), chBrok: parseFloat($('chb').value) || 20, chStt: parseFloat($('chs').value) || 0.15, zhOn: $('zhon').value === '1', sensexOn: $('sxon').value === '1', newsOn: $('nwon').value === '1', cloudOn: $('clon').value === '1', cloudUrl: $('clurl').value.trim(), cloudKey: $('clkey').value.trim(), agOn: $('agon').value === '1', agProv: $('agprov').value, agKey: $('agkey').value.trim(), agModel: $('agmodel').value.trim(), agCap: parseInt($('agcap').value, 10) || 10, agNote: $('agnote').value.trim(), zhBudget: parseFloat($('zhb').value) || 0, aKey: $('ak').value.trim(), aCode: $('acc').value.trim(), aPin: $('apin').value.trim(), aTotp: $('atotp').value.trim(), token: $('tok').value.trim(), capital: parseFloat($('cap').value) || 20000, riskPct: Math.min(5, parseFloat($('rp').value) || 2) };
   sv('sb_cfg', cfg); angelJwt = null; guard.clear(); applySensex(); renderNews(); $('saved').textContent = 'Saved.';
 };
 </script>
